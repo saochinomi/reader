@@ -15,9 +15,9 @@ $surface: #0a0a0a;
 $panel: #101010;
 $text: #c8c8c8;
 $text-muted: #5c5c5c;
-$primary: #c8c8c8;
+$primary: #7fbf7f;
 $secondary: #1e1e1e;
-$accent: #e8e8e8;
+$accent: #9ece6a;
 $foreground: #c8c8c8;
 $border: #1c1c1c;
 
@@ -28,6 +28,13 @@ Screen {
 
 Static {
     background: transparent;
+}
+
+Static#banner {
+    height: 7;
+    color: #7fbf7f;
+    padding: 1 2 0 2;
+    text-style: bold;
 }
 
 Static#titlebar {
@@ -41,6 +48,13 @@ Static#hint {
     height: 1;
     color: $text-muted;
     padding: 0 1;
+}
+
+Static#help {
+    padding: 1 2;
+    margin: 1 2;
+    background: #0d0d0d;
+    border: round #2a2a2a;
 }
 
 Footer {
@@ -76,8 +90,9 @@ DataTable > .datatable--header {
 }
 
 DataTable > .datatable--cursor {
-    background: #1f1f1f;
-    color: #ffffff;
+    background: #1f3a24;
+    color: #9ece6a;
+    text-style: bold;
 }
 
 DataTable > .datatable--odd-row {
@@ -95,8 +110,9 @@ Tree {
 }
 
 Tree > .tree--cursor {
-    background: #1f1f1f;
-    color: #ffffff;
+    background: #1f3a24;
+    color: #9ece6a;
+    text-style: bold;
 }
 
 Tree > .tree--highlight {
@@ -114,8 +130,9 @@ OptionList > .option-list--option {
 }
 
 OptionList > .option-list--option-highlighted {
-    background: #1f1f1f;
-    color: #ffffff;
+    background: #1f3a24;
+    color: #9ece6a;
+    text-style: bold;
 }
 
 Label#message {

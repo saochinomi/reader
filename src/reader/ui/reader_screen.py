@@ -9,6 +9,8 @@ from ..db import LibraryDB
 from ..models import ParsedBook
 from ..renderer import BookRenderer
 from .bookmarks_screen import BookmarksScreen
+from .help_screen import HelpScreen
+from .status_bar import StatusBar
 
 _WIDTH_MODES = (1.0, 0.8, 0.65)
 
@@ -22,6 +24,7 @@ class ReaderScreen(Screen):
         Binding("s", "add_bookmark", "Закладка"),
         Binding("b", "show_bookmarks", "Закладки"),
         Binding("f", "cycle_width", "Ширина"),
+        Binding("?", "show_help", "Помощь"),
         Binding("escape,q", "back", "Назад"),
     ]
 
@@ -37,8 +40,10 @@ class ReaderScreen(Screen):
     def compose(self) -> ComposeResult:
         yield Static(id="chapter")
         yield Static(id="content")
-        yield Static(id="status")
-        yield Footer()
+        yield StatusBar(id="statusbar")
+
+    def action_show_help(self) -> None:
+        self.app.push_screen(HelpScreen())
 
     def on_mount(self) -> None:
         self.book = self.app.get_book(self.book_id)
@@ -64,12 +69,16 @@ class ReaderScreen(Screen):
         assert self.book is not None and self.renderer is not None
         page = self.renderer.render(self.page_index)
         title = self.book.chapters[page.chapter_index].title or "…"
-        self.query_one("#chapter", Static).update(f"[bold]{title}[/bold]")
+        self.query_one("#chapter", Static).update(f"[bold]#9ece6a{title}[/bold]")
         self.query_one("#content", Static).update("\n".join(page.lines) if page.lines else "…")
         total = self.renderer.page_count()
-        self.query_one("#status", Static).update(
-            f"Стр. {self.page_index + 1}/{total} · гл. {page.chapter_index + 1}/{len(self.book.chapters)}"
-            f" · ширина {int(_WIDTH_MODES[self.width_mode] * 100)}%  (j/k — листать, s — закладка)"
+        pct = round((self.page_index + 1) * 100 / total) if total else 0
+        self.query_one("#statusbar", StatusBar).read(
+            self.book.title,
+            chapter=f"гл. {page.chapter_index + 1}/{len(self.book.chapters)}",
+            page=f"стр. {self.page_index + 1}/{total}",
+            fmt=self.book.format.value.upper(),
+            pct=pct,
         )
         self._save_progress(page.chapter_index, page.paragraph_index)
 

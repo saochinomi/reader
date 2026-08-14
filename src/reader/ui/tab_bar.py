@@ -1,0 +1,105 @@
+from __future__ import annotations
+
+from textual.app import ComposeResult
+from textual.containers import Horizontal
+from textual.widgets import Button, Static
+
+MAX_BUFFERS = 6
+
+
+class TabBar(Horizontal):
+    """Ряд вкладок-буферов (открытые книги) в стиле bufferline."""
+
+    DEFAULT_CSS = """
+    TabBar {
+        height: 3;
+        padding: 0 1;
+        align-vertical: middle;
+    }
+
+    TabBar Button {
+        height: 3;
+        padding: 0 1;
+        border: round #2a2a2a;
+        background: #101010;
+        color: #8a8a8a;
+        margin: 0 0 0 1;
+        min-width: 12;
+        content-align: left middle;
+    }
+
+    TabBar Button.-active-tab {
+        border: round #7fbf7f;
+        background: #15231a;
+        color: #9ece6a;
+        text-style: bold;
+    }
+
+    TabBar Button.-plus {
+        min-width: 3;
+        max-width: 3;
+        border: round #2a2a2a;
+        background: #101010;
+        color: #8a8a8a;
+        content-align: center middle;
+        padding: 0;
+    }
+
+    TabBar Static {
+        color: #5c5c5c;
+        padding: 0 1;
+        text-style: italic;
+    }
+    """
+
+    def __init__(self, on_open=None, on_add=None):
+        super().__init__()
+        self._on_open = on_open
+        self._on_add = on_add
+        self._tabs: list[tuple[int, str]] = []
+        self._active: int | None = None
+
+    def compose(self) -> ComposeResult:
+        yield Static("нет открытых книг — нажми [b]i[/b]", id="tab-empty")
+
+    def refresh_tabs(self, tabs: list[tuple[int, str]], active: int | None) -> None:
+        self._tabs = tabs[:MAX_BUFFERS]
+        self._active = active
+        self.run_worker(self._rebuild())
+
+    async def _rebuild(self) -> None:
+        for widget in list(self.query(Button)):
+            await widget.remove()
+        empty = self.query_one("#tab-empty", Static)
+        await empty.remove()
+        await self.mount(Static("нет открытых книг — нажми [b]i[/b]", id="tab-empty"))
+        if not self._tabs:
+            return
+        for book_id, title in self._tabs:
+            active = book_id == self._active
+            await self.mount(
+                Button(
+                    self._label(title),
+                    id=f"tab-{book_id}",
+                    classes="tab -active-tab" if active else "tab",
+                )
+            )
+        await self.mount(Button("+", id="tab-add", classes="plus"))
+
+    def _label(self, title: str) -> str:
+        title = title.strip()
+        return title if len(title) <= 14 else title[:13] + "…"
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "tab-add":
+            if self._on_add:
+                self._on_add()
+            return
+        prefix = "tab-"
+        if event.button.id and event.button.id.startswith(prefix):
+            try:
+                book_id = int(event.button.id[len(prefix):])
+            except ValueError:
+                return
+            if self._on_open:
+                self._on_open(book_id)

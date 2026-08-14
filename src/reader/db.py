@@ -104,6 +104,13 @@ class LibraryDB:
         cur = self._conn.execute("SELECT * FROM books WHERE id = ?", (book_id,))
         return cur.fetchone()
 
+    def recent_books(self, limit: int = 6) -> list[sqlite3.Row]:
+        cur = self._conn.execute(
+            "SELECT * FROM books WHERE last_opened > 0 ORDER BY last_opened DESC LIMIT ?",
+            (limit,),
+        )
+        return cur.fetchall()
+
     def get_progress(self, book_id: int) -> sqlite3.Row | None:
         cur = self._conn.execute(
             "SELECT chapter, paragraph, scroll FROM progress WHERE book_id = ?",

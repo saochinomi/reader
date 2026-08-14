@@ -4,12 +4,14 @@ import asyncio
 from pathlib import Path
 
 import pytest
-from textual.widgets import DirectoryTree
+from textual.widgets import Button, DirectoryTree, Static
 
 from reader.ui.app import ReaderApp
 from reader.ui.file_picker_screen import FilePickerScreen
 from reader.ui.library_screen import LibraryScreen
 from reader.ui.reader_screen import ReaderScreen
+from reader.ui.status_bar import StatusBar
+from reader.ui.tab_bar import TabBar
 
 from fixtures import build_epub, build_fb2, build_txt, write_fixture
 
@@ -92,6 +94,38 @@ class TestUi:
                 await pilot.pause()
                 assert isinstance(app.screen, LibraryScreen)
                 assert len(app.screen._rows) == 1
+
+        asyncio.run(scenario())
+
+    def test_banner_and_tabs_and_statusbar(self, tmp_path: Path):
+        _home(tmp_path)
+        book = tmp_path / "book.fb2"
+        write_fixture(book, build_fb2())
+
+        async def scenario():
+            from reader.library import import_book
+
+            app = ReaderApp(tmp_path / "lib.db")
+            async with app.run_test(size=(100, 40)) as pilot:
+                lib = app.screen
+                banner = lib.query_one("#banner", Static)
+                assert "███████╗" in banner.content
+                assert lib.query_one(TabBar) is not None
+                status = lib.query_one(StatusBar)
+                assert "книг: 0" in status.content
+
+                book_id = import_book(app.db, book)
+                app.db.save_progress(book_id, 0, 1, 1)
+                lib._refresh_table()
+                lib._update_tabs(active=book_id)
+                await pilot.pause()
+                assert len(status.content) > 0 and "книг: 1" in status.content
+                tabs = lib.query_one(TabBar)
+                for _ in range(50):
+                    await pilot.pause()
+                    if any(b.id and b.id.startswith("tab-") for b in tabs.query(Button)):
+                        break
+                assert any(b.id and b.id.startswith("tab-") for b in tabs.query(Button))
 
         asyncio.run(scenario())
 

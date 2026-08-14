@@ -10,19 +10,25 @@ from textual.screen import Screen
 from textual.widgets import DataTable, Footer, Input, Static
 
 from ..db import LibraryDB
+from .banner import banner
 from .confirm_screen import ConfirmScreen
 from .file_picker_screen import FilePickerScreen
+from .help_screen import HelpScreen
 from .reader_screen import ReaderScreen
+from .status_bar import StatusBar
+from .tab_bar import TabBar
 
 
 class LibraryScreen(Screen):
     BINDINGS = [
         Binding("i", "add_book", "Добавить"),
+        Binding("tab", "next_tab", "Вкладки"),
         Binding("/", "focus_search", "Поиск"),
         Binding("u", "rescan", "Сканировать"),
         Binding("d", "delete_book", "Удалить"),
         Binding("r", "reimport", "Перечитать"),
         Binding("s", "cycle_sort", "Сортировка"),
+        Binding("?", "show_help", "Помощь"),
         Binding("q", "quit_app", "Выход"),
     ]
 
@@ -36,13 +42,14 @@ class LibraryScreen(Screen):
         self._rows: dict[str, dict] = {}
         self._selected_id: int | None = None
         self._pending_delete_id: int | None = None
+        self._tabs: list[tuple[int, str]] = []
 
     def compose(self) -> ComposeResult:
-        yield Static("reader — библиотека", id="titlebar")
+        yield Static(banner(), id="banner")
+        yield TabBar(on_open=self._open_from_tab, on_add=self.action_add_book)
         yield DataTable(id="books")
         yield Input(placeholder="Поиск по названию, автору, описанию…", id="search")
-        yield Static(id="hint")
-        yield Footer()
+        yield StatusBar(id="statusbar")
 
     def on_mount(self) -> None:
         table = self.query_one("#books", DataTable)
@@ -50,10 +57,15 @@ class LibraryScreen(Screen):
         table.zebra_stripes = True
         table.add_columns("Название", "Автор", "Год", "Формат", "Прогресс")
         self._refresh_table()
+        self._update_tabs()
         if self.import_dir_on_start:
             self._import_dir(self.import_dir_on_start)
         else:
             self._scan_books_dir()
+
+    def on_resume(self) -> None:
+        self._refresh_table()
+        self._update_tabs()
 
     def _sorted(self, query: str = "") -> list:
         rows = self.db.search_books(query) if query else self.db.all_books()
@@ -87,9 +99,10 @@ class LibraryScreen(Screen):
                 selected_row = i
         if self._rows:
             table.move_cursor(row=selected_row)
-        self.query_one("#hint", Static).update(
-            f"[i] добавить книгу   ·   книг: {len(self._rows)}   ·   "
-            f"[s] сортировка: по {dict(self.SORT_KEYS)[self.sort_key]}"
+        query = self.query_one("#search", Input).value.strip()
+        sort_label = dict(self.SORT_KEYS)[self.sort_key]
+        self.query_one("#statusbar", StatusBar).browse(
+            len(self._rows), sort_label=sort_label, query=query
         )
 
     @staticmethod
@@ -140,6 +153,7 @@ class LibraryScreen(Screen):
             return
         self._refresh_table()
         self._selected_id = book_id
+        self._update_tabs(active=book_id)
         self.app.push_screen(ReaderScreen(self.db, book_id))
 
     def action_focus_search(self) -> None:
@@ -164,6 +178,7 @@ class LibraryScreen(Screen):
         except Exception as e:  # noqa: BLE001
             self.app.notify(f"Не удалось открыть: {e}", severity="error")
             return
+        self._update_tabs(active=book_id)
         await self.app.push_screen(ReaderScreen(self.db, book_id))
 
     async def action_delete_book(self) -> None:
@@ -203,6 +218,35 @@ class LibraryScreen(Screen):
     def action_quit_app(self) -> None:
         self.app.exit()
 
+    # --- вкладки ---
+
+    def _recent_tabs(self) -> list[tuple[int, str]]:
+        recent = self.db.recent_books(6)
+        return [(int(r["id"]), r["title"]) for r in recent]
+
+    def _update_tabs(self, active: int | None = None) -> None:
+        self._tabs = self._recent_tabs()
+        self.query_one(TabBar).refresh_tabs(self._tabs, active)
+
+    def _open_from_tab(self, book_id: int) -> None:
+        self._selected_id = book_id
+        self.run_worker(self.action_open_book())
+
+    def action_next_tab(self) -> None:
+        if not self._tabs:
+            return
+        try:
+            idx = [t for t in self._tabs if t[0] == self._current_book_id()]
+            current = self._tabs.index(idx[0]) if idx else -1
+        except (ValueError, IndexError):
+            current = -1
+        book_id = self._tabs[(current + 1) % len(self._tabs)][0]
+        self._selected_id = book_id
+        self.action_open_book()
+
+    def action_show_help(self) -> None:
+        self.app.push_screen(HelpScreen())
+
     # --- события ---
 
     @on(Input.Changed, "#search")
@@ -236,6 +280,7 @@ class LibraryScreen(Screen):
     def _scan_finished(self, results) -> None:
         if results:
             self._refresh_table()
+            self._update_tabs()
 
     @work(thread=True)
     def _import_dir(self, directory: str) -> None:
@@ -252,6 +297,7 @@ class LibraryScreen(Screen):
         ok = sum(1 for _, s in results if s)
         failed = [(p, e) for p, e in results if not e]
         self._refresh_table()
+        self._update_tabs()
         if not failed:
             self.app.notify(f"Импортировано книг: {ok} из {directory}", severity="information")
         else:
