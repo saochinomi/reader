@@ -10,6 +10,7 @@ from ..models import ParsedBook
 from ..renderer import BookRenderer
 from .bookmarks_screen import BookmarksScreen
 from .help_screen import HelpScreen
+from .key_bar import KeyBar
 from .status_bar import StatusBar
 
 _WIDTH_MODES = (1.0, 0.8, 0.65)
@@ -41,11 +42,10 @@ class ReaderScreen(Screen):
         yield Static(id="chapter")
         yield Static(id="content")
         yield StatusBar(id="statusbar")
-
-    def action_show_help(self) -> None:
-        self.app.push_screen(HelpScreen())
+        yield KeyBar(id="keybar")
 
     def on_mount(self) -> None:
+        self.query_one("#keybar", KeyBar).set_keys(KeyBar.reader())
         self.book = self.app.get_book(self.book_id)
         self._rebuild_renderer()
         row = self.db.get_progress(self.book_id)
@@ -151,6 +151,9 @@ class ReaderScreen(Screen):
 
     def _on_bookmark_deleted(self, bookmark_id: int) -> None:
         pass
+
+    def action_show_help(self) -> None:
+        self.app.push_screen(HelpScreen())
 
     def action_back(self) -> None:
         self.app.pop_screen()

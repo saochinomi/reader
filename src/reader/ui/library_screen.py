@@ -14,6 +14,7 @@ from .banner import banner
 from .confirm_screen import ConfirmScreen
 from .file_picker_screen import FilePickerScreen
 from .help_screen import HelpScreen
+from .key_bar import KeyBar
 from .reader_screen import ReaderScreen
 from .status_bar import StatusBar
 from .tab_bar import TabBar
@@ -50,6 +51,7 @@ class LibraryScreen(Screen):
         yield DataTable(id="books")
         yield Input(placeholder="Поиск по названию, автору, описанию…", id="search")
         yield StatusBar(id="statusbar")
+        yield KeyBar(id="keybar")
 
     def on_mount(self) -> None:
         table = self.query_one("#books", DataTable)
@@ -58,6 +60,7 @@ class LibraryScreen(Screen):
         table.add_columns("Название", "Автор", "Год", "Формат", "Прогресс")
         self._refresh_table()
         self._update_tabs()
+        self.query_one("#keybar", KeyBar).set_keys(KeyBar.library())
         if self.import_dir_on_start:
             self._import_dir(self.import_dir_on_start)
         else:

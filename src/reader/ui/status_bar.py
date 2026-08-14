@@ -4,40 +4,29 @@ from textual.widgets import Static
 
 
 class StatusBar(Static):
-    """Статус-бар в стиле lualine: разделы с фоном, режим, позиция, хоткеи."""
+    """Центрированная строка режима: режим · контекст · прогресс."""
 
     DEFAULT_CSS = """
     StatusBar {
         height: 1;
         background: #0d0d0d;
-        color: #9a9a9a;
+        color: #8a8a8a;
+        text-align: center;
+        padding: 0 1;
     }
     """
 
     @staticmethod
-    def _mode(mode: str, active: bool = False) -> str:
-        color = "#1f3a24" if active else "#0d0d0d"
-        text = "#9ece6a" if active else "#6a6a6a"
-        return f"[{color}]{text} {mode} [/]"
+    def _mode(mode: str) -> str:
+        return f"[#9ece6a]{mode}[/]"
 
-    def browse(
-        self,
-        count: int,
-        *,
-        sort_label: str = "",
-        query: str = "",
-        keys: str = "i / s / u / d / ?",
-    ) -> None:
-        parts = [
-            self._mode("BROWSE", active=True),
-            f"[on #101010]#c8c8c8 книг: {count}[/]",
-        ]
-        if query:
-            parts.append(f"[on #101010]#c8c8c8 «{query}»[/]")
+    def browse(self, count: int, *, sort_label: str = "", query: str = "") -> None:
+        parts = [self._mode("BROWSE"), f"[#c8c8c8]книг: {count}[/]"]
         if sort_label:
-            parts.append(f"[on #101010]#c8c8c8 по {sort_label}[/]")
-        parts.append(f"[on #101010]#555555 {keys}[/]")
-        self.update("".join(parts))
+            parts.append(f"[#8a8a8a]по {sort_label}[/]")
+        if query:
+            parts.append(f"[#8a8a8a]«{query}»[/]")
+        self.update("  ·  ".join(parts))
 
     def read(
         self,
@@ -52,15 +41,12 @@ class StatusBar(Static):
         bar_len = 10
         filled = round(pct / 100 * bar_len)
         bar = "▰" * filled + "▱" * (bar_len - filled)
-        parts = [
-            self._mode("READ", active=True),
-            f"[on #101010]#c8c8c8 {title}[/]",
-        ]
+        parts = [self._mode("READ"), f"[#c8c8c8]{title}[/]"]
         if chapter:
-            parts.append(f"[on #101010]#8a8a8a {chapter}[/]")
+            parts.append(f"[#8a8a8a]{chapter}[/]")
         if page:
-            parts.append(f"[on #101010]#8a8a8a {page}[/]")
+            parts.append(f"[#8a8a8a]{page}[/]")
         if fmt:
-            parts.append(f"[on #101010]#8a8a8a {fmt}[/]")
-        parts.append(f"[on #101010]{color} {bar} {pct}%[/]")
-        self.update("".join(parts))
+            parts.append(f"[#8a8a8a]{fmt}[/]")
+        parts.append(f"[{color}]{bar} {pct}%[/]")
+        self.update("  ·  ".join(parts))

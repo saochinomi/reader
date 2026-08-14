@@ -8,6 +8,7 @@ from textual.widgets import Button, DirectoryTree, Static
 
 from reader.ui.app import ReaderApp
 from reader.ui.file_picker_screen import FilePickerScreen
+from reader.ui.key_bar import KeyBar
 from reader.ui.library_screen import LibraryScreen
 from reader.ui.reader_screen import ReaderScreen
 from reader.ui.status_bar import StatusBar
@@ -88,6 +89,8 @@ class TestUi:
             app = ReaderApp(tmp_path / "lib.db", open_path=book)
             async with app.run_test(size=(100, 40)) as pilot:
                 assert isinstance(app.screen, ReaderScreen)
+                keybar = app.screen.query_one("#keybar", KeyBar)
+                assert "закладка" in keybar.content and "ширина" in keybar.content
                 await pilot.press("j")
                 await pilot.pause()
                 await pilot.press("escape")
@@ -126,6 +129,10 @@ class TestUi:
                     if any(b.id and b.id.startswith("tab-") for b in tabs.query(Button)):
                         break
                 assert any(b.id and b.id.startswith("tab-") for b in tabs.query(Button))
+
+                keybar = lib.query_one("#keybar", KeyBar)
+                assert "добавить" in keybar.content and "сортировка" in keybar.content
+                status_center = "книг: 1" in status.content
 
         asyncio.run(scenario())
 
