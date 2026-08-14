@@ -18,15 +18,18 @@ class KeyBar(Static):
     """
 
     @staticmethod
-    def _seg(icon: str, key: str, label: str) -> str:
+    def _seg(accent: str, bright: str, icon: str, key: str, label: str) -> str:
         return (
-            f"[#7fbf7f]{icon}[/] [#9ece6a]{key}[/] "
+            f"[{accent}]{icon}[/] [{bright}]{key}[/] "
             f"[#5c5c5c]{label}[/]"
         )
 
     def set_keys(self, items: list[tuple[str, str, str]]) -> None:
         """items: список (иконка, клавиша, подпись)."""
-        self.update(_SEP.join(self._seg(*item) for item in items))
+        accent, bright, _bg, _dim = self.app.accent_colors()
+        self.update(
+            _SEP.join(self._seg(accent, bright, *item) for item in items)
+        )
 
     @staticmethod
     def library() -> list[tuple[str, str, str]]:
@@ -38,6 +41,7 @@ class KeyBar(Static):
             ("⟳", "u", "скан"),
             ("✕", "d", "удалить"),
             ("⏭", "Tab", "вкладки"),
+            ("◎", "c", "цвет"),
             ("?", "?", "помощь"),
         ]
 
@@ -51,6 +55,7 @@ class KeyBar(Static):
             ("⚑", "s", "закладка"),
             ("☰", "b", "список"),
             ("⇔", "f", "ширина"),
+            ("◎", "c", "цвет"),
             ("?", "?", "помощь"),
             ("⏴", "Esc", "назад"),
         ]

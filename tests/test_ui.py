@@ -136,6 +136,36 @@ class TestUi:
 
         asyncio.run(scenario())
 
+    def test_choose_accent_color(self, tmp_path: Path):
+        _home(tmp_path)
+        book = tmp_path / "book.fb2"
+        write_fixture(book, build_fb2())
+
+        async def scenario():
+            app = ReaderApp(tmp_path / "lib.db")
+            async with app.run_test(size=(100, 40)) as pilot:
+                lib = app.screen
+                assert app.theme == "reader-green"
+
+                await pilot.press("c")
+                await pilot.pause()
+                from reader.ui.color_screen import ColorScreen
+
+                assert isinstance(app.screen, ColorScreen)
+                await pilot.press("down", "enter")
+                await pilot.pause()
+                assert app._accent_name == "blue"
+                assert app.theme == "reader-blue"
+                assert isinstance(app.screen, LibraryScreen)
+                keybar = lib.query_one("#keybar", KeyBar)
+                for _ in range(50):
+                    await pilot.pause()
+                    if "#82aaff" in keybar.content:
+                        break
+                assert "#82aaff" in keybar.content
+
+        asyncio.run(scenario())
+
     def test_search_cyrillic(self, tmp_path: Path):
         _home(tmp_path)
         b1 = tmp_path / "a.fb2"

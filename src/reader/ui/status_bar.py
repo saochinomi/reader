@@ -17,11 +17,12 @@ class StatusBar(Static):
     """
 
     @staticmethod
-    def _mode(mode: str) -> str:
-        return f"[#9ece6a]{mode}[/]"
+    def _mode(mode: str, bright: str) -> str:
+        return f"[{bright}]{mode}[/]"
 
     def browse(self, count: int, *, sort_label: str = "", query: str = "") -> None:
-        parts = [self._mode("BROWSE"), f"[#c8c8c8]книг: {count}[/]"]
+        _acc, bright, _bg, _dim = self.app.accent_colors()
+        parts = [self._mode("BROWSE", bright), f"[#c8c8c8]книг: {count}[/]"]
         if sort_label:
             parts.append(f"[#8a8a8a]по {sort_label}[/]")
         if query:
@@ -37,11 +38,12 @@ class StatusBar(Static):
         fmt: str = "",
         pct: int = 0,
     ) -> None:
-        color = "#9ece6a" if pct >= 100 else "#7fbf7f"
+        _acc, bright, _bg, _dim = self.app.accent_colors()
+        color = bright if pct >= 100 else _acc
         bar_len = 10
         filled = round(pct / 100 * bar_len)
         bar = "▰" * filled + "▱" * (bar_len - filled)
-        parts = [self._mode("READ"), f"[#c8c8c8]{title}[/]"]
+        parts = [self._mode("READ", bright), f"[#c8c8c8]{title}[/]"]
         if chapter:
             parts.append(f"[#8a8a8a]{chapter}[/]")
         if page:

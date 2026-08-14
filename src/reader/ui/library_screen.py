@@ -11,6 +11,7 @@ from textual.widgets import DataTable, Footer, Input, Static
 
 from ..db import LibraryDB
 from .banner import banner
+from .color_screen import ColorScreen
 from .confirm_screen import ConfirmScreen
 from .file_picker_screen import FilePickerScreen
 from .help_screen import HelpScreen
@@ -29,6 +30,7 @@ class LibraryScreen(Screen):
         Binding("d", "delete_book", "Удалить"),
         Binding("r", "reimport", "Перечитать"),
         Binding("s", "cycle_sort", "Сортировка"),
+        Binding("c", "choose_color", "Цвет"),
         Binding("?", "show_help", "Помощь"),
         Binding("q", "quit_app", "Выход"),
     ]
@@ -66,9 +68,10 @@ class LibraryScreen(Screen):
         else:
             self._scan_books_dir()
 
-    def on_resume(self) -> None:
+    def on_screen_resume(self, event) -> None:
         self._refresh_table()
         self._update_tabs()
+        self.query_one("#keybar", KeyBar).set_keys(KeyBar.library())
 
     def _sorted(self, query: str = "") -> list:
         rows = self.db.search_books(query) if query else self.db.all_books()
@@ -249,6 +252,9 @@ class LibraryScreen(Screen):
 
     def action_show_help(self) -> None:
         self.app.push_screen(HelpScreen())
+
+    def action_choose_color(self) -> None:
+        self.app.push_screen(ColorScreen())
 
     # --- события ---
 

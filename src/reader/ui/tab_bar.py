@@ -29,9 +29,9 @@ class TabBar(Horizontal):
     }
 
     TabBar Button.-active-tab {
-        border: round #7fbf7f;
-        background: #15231a;
-        color: #9ece6a;
+        border: round $primary;
+        background: $accent-dim;
+        color: $accent;
         text-style: bold;
     }
 
@@ -58,6 +58,8 @@ class TabBar(Horizontal):
         self._on_add = on_add
         self._tabs: list[tuple[int, str]] = []
         self._active: int | None = None
+        self._rebuilding = False
+        self._rebuild_again = False
 
     def compose(self) -> ComposeResult:
         yield Static("нет открытых книг — нажми [b]i[/b]", id="tab-empty")
@@ -68,10 +70,25 @@ class TabBar(Horizontal):
         self.run_worker(self._rebuild())
 
     async def _rebuild(self) -> None:
+        if self._rebuilding:
+            self._rebuild_again = True
+            return
+        self._rebuilding = True
+        try:
+            while True:
+                self._rebuild_again = False
+                await self._rebuild_once()
+                if not self._rebuild_again:
+                    break
+        finally:
+            self._rebuilding = False
+
+    async def _rebuild_once(self) -> None:
         for widget in list(self.query(Button)):
             await widget.remove()
-        empty = self.query_one("#tab-empty", Static)
-        await empty.remove()
+        empty = self.query("#tab-empty")
+        if empty:
+            await empty.first().remove()
         await self.mount(Static("нет открытых книг — нажми [b]i[/b]", id="tab-empty"))
         if not self._tabs:
             return

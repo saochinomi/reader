@@ -9,6 +9,7 @@ from ..db import LibraryDB
 from ..models import ParsedBook
 from ..renderer import BookRenderer
 from .bookmarks_screen import BookmarksScreen
+from .color_screen import ColorScreen
 from .help_screen import HelpScreen
 from .key_bar import KeyBar
 from .status_bar import StatusBar
@@ -25,6 +26,7 @@ class ReaderScreen(Screen):
         Binding("s", "add_bookmark", "Закладка"),
         Binding("b", "show_bookmarks", "Закладки"),
         Binding("f", "cycle_width", "Ширина"),
+        Binding("c", "choose_color", "Цвет"),
         Binding("?", "show_help", "Помощь"),
         Binding("escape,q", "back", "Назад"),
     ]
@@ -68,8 +70,9 @@ class ReaderScreen(Screen):
     def _draw(self) -> None:
         assert self.book is not None and self.renderer is not None
         page = self.renderer.render(self.page_index)
+        _acc, bright, _bg, _dim = self.app.accent_colors()
         title = self.book.chapters[page.chapter_index].title or "…"
-        self.query_one("#chapter", Static).update(f"[bold]#9ece6a{title}[/bold]")
+        self.query_one("#chapter", Static).update(f"[bold]{bright}{title}[/bold]")
         self.query_one("#content", Static).update("\n".join(page.lines) if page.lines else "…")
         total = self.renderer.page_count()
         pct = round((self.page_index + 1) * 100 / total) if total else 0
@@ -154,6 +157,14 @@ class ReaderScreen(Screen):
 
     def action_show_help(self) -> None:
         self.app.push_screen(HelpScreen())
+
+    def action_choose_color(self) -> None:
+        self.app.push_screen(ColorScreen())
+
+    def on_screen_resume(self, event) -> None:
+        self.query_one("#keybar", KeyBar).set_keys(KeyBar.reader())
+        if self.book is not None:
+            self._draw()
 
     def action_back(self) -> None:
         self.app.pop_screen()

@@ -46,14 +46,18 @@ class HelpScreen(Screen):
     ]
 
     def compose(self) -> ComposeResult:
-        lines = ["[b]#7fbf7f Клавиши[/b]", ""]
+        yield Static(id="help")
+
+    def on_mount(self) -> None:
+        _acc, bright, _bg, _dim = self.app.accent_colors()
+        lines = [f"[bold]{bright} Клавиши[/bold]", ""]
         for title, pairs in _SECTIONS:
-            lines.append(f"[b]#c8c8c8{title}[/b]")
+            lines.append(f"[bold]#c8c8c8{title}[/bold]")
             for key, desc in pairs:
-                lines.append(f"  [#7fbf7f]{key:>8}[/]  {desc}")
+                lines.append(f"  [{_acc}]{key:>8}[/]  {desc}")
             lines.append("")
         lines.append("[#5c5c5c]Esc / q — закрыть[/]")
-        yield Static("\n".join(lines), id="help")
+        self.query_one("#help", Static).update("\n".join(lines))
 
     def action_dismiss(self) -> None:
         self.app.pop_screen()

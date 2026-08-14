@@ -1,13 +1,23 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 from textual.app import App
+from textual.theme import Theme
 
 from ..db import LibraryDB
 from ..models import ParsedBook
+from . import theme
 from .library_screen import LibraryScreen
 from .reader_screen import ReaderScreen
+
+CONFIG_DIR = Path.home() / ".config" / "reader"
+CONFIG_FILE = CONFIG_DIR / "config.json"
+
+
+def _config_file() -> Path:
+    return Path.home() / ".config" / "reader" / "config.json"
 
 CSS = """
 $background: #0a0a0a;
@@ -15,9 +25,6 @@ $surface: #0a0a0a;
 $panel: #101010;
 $text: #c8c8c8;
 $text-muted: #5c5c5c;
-$primary: #7fbf7f;
-$secondary: #1e1e1e;
-$accent: #9ece6a;
 $foreground: #c8c8c8;
 $border: #1c1c1c;
 
@@ -32,8 +39,9 @@ Static {
 
 Static#banner {
     height: 7;
-    color: #7fbf7f;
+    color: $accent;
     padding: 1 2 0 2;
+    text-align: center;
     text-style: bold;
 }
 
@@ -55,6 +63,13 @@ Static#help {
     margin: 1 2;
     background: #0d0d0d;
     border: round #2a2a2a;
+}
+
+Static#color_title {
+    height: 3;
+    padding: 1 2 0 2;
+    color: $accent;
+    text-style: bold;
 }
 
 Footer {
@@ -90,8 +105,8 @@ DataTable > .datatable--header {
 }
 
 DataTable > .datatable--cursor {
-    background: #1f3a24;
-    color: #9ece6a;
+    background: $accent-bg;
+    color: $accent;
     text-style: bold;
 }
 
@@ -110,8 +125,8 @@ Tree {
 }
 
 Tree > .tree--cursor {
-    background: #1f3a24;
-    color: #9ece6a;
+    background: $accent-bg;
+    color: $accent;
     text-style: bold;
 }
 
@@ -130,8 +145,8 @@ OptionList > .option-list--option {
 }
 
 OptionList > .option-list--option-highlighted {
-    background: #1f3a24;
-    color: #9ece6a;
+    background: $accent-bg;
+    color: $accent;
     text-style: bold;
 }
 
@@ -183,6 +198,60 @@ class ReaderApp(App):
         self.db = LibraryDB(db_path)
         self.open_path = open_path
         self._books_cache: dict[int, ParsedBook] = {}
+        self._accent_name = self._load_accent()
+        self._register_themes()
+        self.theme = f"reader-{self._accent_name}"
+
+    # --- настройка акцентного цвета ---
+
+    @staticmethod
+    def _load_accent() -> str:
+        try:
+            data = json.loads(_config_file().read_text(encoding="utf-8"))
+            name = data.get("accent", theme.DEFAULT)
+            if name in theme.PALETTES:
+                return name
+        except (OSError, ValueError):
+            pass
+        return theme.DEFAULT
+
+    @staticmethod
+    def _save_accent(name: str) -> None:
+        try:
+            path = _config_file()
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(json.dumps({"accent": name}, ensure_ascii=False), encoding="utf-8")
+        except OSError:
+            pass
+
+    def _register_themes(self) -> None:
+        for label, (acc, bright, bg, dim) in theme.PALETTES.items():
+            self.register_theme(
+                Theme(
+                    name=f"reader-{label}",
+                    primary=acc,
+                    accent=bright,
+                    secondary=bg,
+                    success=bright,
+                    warning="#e0af68",
+                    error="#f7768e",
+                    background="#0a0a0a",
+                    surface="#0d0d0d",
+                    panel="#101010",
+                    foreground="#c8c8c8",
+                    variables={"accent-bg": bg, "accent-dim": dim},
+                )
+            )
+
+    def accent_colors(self) -> tuple[str, str, str, str]:
+        return theme.palette(self._accent_name)
+
+    def set_accent(self, name: str) -> None:
+        if name not in theme.PALETTES or name == self._accent_name:
+            return
+        self._accent_name = name
+        self.theme = f"reader-{name}"
+        self._save_accent(name)
 
     def on_mount(self) -> None:
         books_dir = Path.home() / "Books"
