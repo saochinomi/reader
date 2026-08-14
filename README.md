@@ -26,6 +26,18 @@ pipx install .             # альтернатива через pipx
 pip install --user .       # или через pip
 ```
 
+После установки добавьте `~/.local/bin` в PATH (uv обычно делает это сам):
+
+```bash
+uv tool update-shell       # автоматически обновит конфиги шеллов
+```
+
+Если `reader` всё ещё не находится — добавьте вручную в `~/.bashrc` (или `~/.zshrc`):
+
+```bash
+export PATH="$HOME/.local/bin:$PATH"
+```
+
 ## Использование
 
 ```bash
