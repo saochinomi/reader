@@ -196,6 +196,132 @@ class TestDocx:
         assert book.chapters[0].paragraphs == ["Текст главы."]
 
 
+class TestPdf:
+    def test_parse(self, tmp_path: Path):
+        p = tmp_path / "book.pdf"
+        import struct
+
+        def build_pdf(title: str, lines: list[str]) -> bytes:
+            def hex_utf16(s: str) -> bytes:
+                return b"<FEFF" + s.encode("utf-16-be").hex().encode() + b">"
+
+            font_num = 3 + len(lines)
+            pages = [
+                b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] "
+                b"/Contents " + str(i).encode() + b" 0 R /Resources << /Font << /F1 "
+                + str(font_num).encode() + b" 0 R >> >> >>"
+                for i in range(3, 3 + len(lines))
+            ]
+            objects: list[bytes] = [
+                b"<< /Type /Catalog /Pages 2 0 R >>",
+                b"<< /Type /Pages /Kids [" + b" ".join(pages) + b"] /Count "
+                + str(len(pages)).encode() + b" >>",
+            ]
+            for i, line in enumerate(lines):
+                content = f"BT /F1 12 Tf 50 700 Td ({line}) Tj ET".encode()
+                objects.append(
+                    b"<< /Length " + str(len(content)).encode() + b" >>\nstream\n"
+                    + content + b"\nendstream"
+                )
+            objects.append(
+                b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>"
+            )
+            objects.append(b"<< /Title " + hex_utf16(title) + b" >>")
+            out = bytearray(b"%PDF-1.4\n")
+            offsets = [0]
+            for i, obj in enumerate(objects, 1):
+                offsets.append(len(out))
+                out += f"{i} 0 obj\n".encode() + obj + b"\nendobj\n"
+            xref_pos = len(out)
+            out += f"xref\n0 {len(objects) + 1}\n".encode()
+            out += b"0000000000 65535 f \n"
+            for off in offsets[1:]:
+                out += f"{off:010d} 00000 n \n".encode()
+            out += (
+                f"trailer\n<< /Size {len(objects) + 1} /Root 1 0 R /Info {len(objects)} 0 R >>\n"
+                f"startxref\n{xref_pos}\n%%EOF\n".encode()
+            )
+            return bytes(out)
+
+        pdf = build_pdf(
+            "PDF-книга",
+            ["Chapter 1", "Text of chapter one.", "Chapter 2", "Text of chapter two."],
+        )
+        write_fixture(p, pdf)
+        book = parse(p)
+        assert book.format == Format.PDF
+        assert book.title == "PDF-книга"
+        assert [c.title for c in book.chapters] == ["Chapter 1", "Chapter 2"]
+
+
+class TestMobi:
+    def test_parse(self, tmp_path: Path):
+        p = tmp_path / "book.mobi"
+
+        def compress_palmdoc(data: bytes) -> bytes:
+            out = bytearray()
+            i = 0
+            while i < len(data):
+                chunk = data[i : i + 8]
+                out += bytes([len(chunk)]) + chunk
+                i += 8
+            return bytes(out)
+
+        def build_mobi(title: str, author: str, body: bytes) -> bytes:
+            html_body = (
+                b"<html><head><title>" + title.encode() + b"</title></head><body>"
+                + body + b"</body></html>"
+            )
+            text = compress_palmdoc(html_body)
+            exth_records = b"".join(
+                [
+                    struct.pack(">II", 100, 8 + len(author.encode())) + author.encode(),
+                    struct.pack(">II", 503, 8 + len(title.encode())) + title.encode(),
+                ]
+            )
+            exth = b"EXTH" + struct.pack(">II", 12 + len(exth_records), 2) + exth_records
+            mobi_header = (
+                b"MOBI" + struct.pack(">IIIIII", 0x6C, 2, 65001, 0, 0, 0)
+                + b"\x00" * (0x6C - 28) + exth
+            )
+            record0 = (
+                struct.pack(">HHIHHHH", 2, 0, len(text), 1, 4096, 0, 0)
+                + mobi_header
+            )
+            counter = struct.pack(">I", len(text))
+            records = [record0, text, counter]
+            offsets = [0]
+            for r in records:
+                offsets.append(len(b"".join(records[: records.index(r)]) + r) if False else 0)
+            header = bytearray(78)
+            header[:32] = title.encode()[:32].ljust(32, b"\x00")
+            header[60:64] = b"BOOK"
+            header[64:68] = b"MOBI"
+            header[76:78] = struct.pack(">H", 3)
+            pos = 78 + 8 * 3
+            rec_offsets = []
+            for r in records:
+                rec_offsets.append(pos)
+                pos += len(r)
+            for i, off in enumerate(rec_offsets):
+                header += struct.pack(">IB", off, 0) + i.to_bytes(3, "big")
+            return bytes(header) + b"".join(records)
+
+        import struct
+
+        body = (
+            "<h1>Глава 1</h1><p>Текст первой главы.</p>"
+            "<h1>Глава 2</h1><p>Текст второй главы.</p>"
+        ).encode()
+        write_fixture(p, build_mobi("MOBI-книга", "Иван Автор", body))
+        book = parse(p)
+        assert book.format == Format.MOBI
+        assert book.title == "MOBI-книга"
+        assert book.authors == ["Иван Автор"]
+        assert [c.title for c in book.chapters] == ["Глава 1", "Глава 2"]
+        assert book.chapters[0].paragraphs == ["Текст первой главы."]
+
+
 class TestRenderer:
     def test_pagination_roundtrip(self, book_fb2: Path):
         book = parse(book_fb2)

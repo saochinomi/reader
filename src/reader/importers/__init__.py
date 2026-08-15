@@ -4,11 +4,15 @@ from pathlib import Path
 
 from ..models import Format, ParsedBook
 from .detect import sniff
+from .djvu import parse_djvu
+from .doc import parse_doc
 from .docx import parse_docx
 from .epub import parse_epub
 from .fb2 import parse_fb2
 from .html import parse_html
 from .markdown import parse_markdown
+from .mobi import parse_mobi
+from .pdf import parse_pdf
 from .rtf import parse_rtf
 from .txt import parse_txt
 
@@ -20,6 +24,10 @@ PARSERS = {
     Format.MARKDOWN: parse_markdown,
     Format.RTF: parse_rtf,
     Format.DOCX: parse_docx,
+    Format.PDF: parse_pdf,
+    Format.MOBI: parse_mobi,
+    Format.DJVU: parse_djvu,
+    Format.DOC: parse_doc,
 }
 
 

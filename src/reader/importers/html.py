@@ -60,6 +60,22 @@ def _build_chapters(blocks: list[tuple[str, str]]) -> list[Chapter]:
     return chapters
 
 
+_PARSER = etree.HTMLParser(recover=True, encoding="utf-8")
+
+
+def parse_html_text(text: str, title: str, *, authors: list[str] | None = None) -> ParsedBook:
+    root = etree.fromstring(text.encode("utf-8"), parser=_PARSER)
+    title_el = root.find(".//title")
+    parsed_title = _text_of(title_el) if title_el is not None else ""
+    first_h = next((t for k, t in _iter_blocks(root) if k == "h"), None)
+    return ParsedBook(
+        format=Format.HTML,
+        title=parsed_title or first_h or title,
+        authors=authors or [],
+        chapters=_build_chapters(_iter_blocks(root)),
+    )
+
+
 def parse_html(path: Path) -> ParsedBook:
     raw = path.read_bytes()
     try:
@@ -69,14 +85,4 @@ def parse_html(path: Path) -> ParsedBook:
 
         best = from_bytes(raw).best()
         text = str(best) if best else raw.decode("utf-8", errors="replace")
-    root = etree.fromstring(text.encode("utf-8"), parser=etree.HTMLParser(recover=True))
-    title_el = root.find(".//title")
-    title = _text_of(title_el) if title_el is not None else path.stem
-    first_h = next((t for k, t in _iter_blocks(root) if k == "h"), None)
-    if not title:
-        title = first_h or path.stem
-    return ParsedBook(
-        format=Format.HTML,
-        title=title,
-        chapters=_build_chapters(_iter_blocks(root)),
-    )
+    return parse_html_text(text, path.stem)
