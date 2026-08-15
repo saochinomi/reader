@@ -3,8 +3,10 @@
 Консольная читалка электронных книг: TXT, EPUB, FB2. Минималистичный тёмный интерфейс, библиотека в SQLite, закладки и прогресс чтения.
 
 ## Фото 
-<img width="1866" height="982" alt="2026-08-14_23-08-01" src="https://github.com/user-attachments/assets/a625573e-6c23-4557-acaa-3f59d90847e2" />
-<img width="1869" height="982" alt="2026-08-14_23-08-40" src="https://github.com/user-attachments/assets/9a620188-b958-4991-944c-9d1aa089c697" />
+<img width="1859" height="558" alt="2026-08-15_16-08-49" src="https://github.com/user-attachments/assets/a51ba8a1-0a27-49b6-b10e-e1e3966f2e6b" />
+<img width="1866" height="982" alt="2026-08-14_23-08-01" src="https://github.com/user-attachments/assets/59983276-e865-41de-a70d-831ec2b609d3" />
+<img width="1864" height="981" alt="2026-08-15_16-08-35" src="https://github.com/user-attachments/assets/52d58f63-80cf-4eb3-a01a-7faddac8876f" />
+
 
 ## Возможности
 
