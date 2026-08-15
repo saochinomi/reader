@@ -6,9 +6,14 @@ from pathlib import Path
 from charset_normalizer import from_path
 
 from ..models import Chapter, Format, ParsedBook
+from .titles import clean_title
 
 _BLANK_RE = re.compile(r"[ \t\u00a0]+")
-_CHAPTER_RE = re.compile(r"^(?:\s*)(?:ГЛАВА|Chapter|Глава)\s*[IVXLC\d\s]+\.?[:\s]*(.*)$", re.IGNORECASE)
+_CHAPTER_RE = re.compile(
+    r"^(?:(?:Глава|ГЛАВА|Chapter|Часть|Part)\s*[IVXLC\d]+\s*[.:]?\s*(.*)"
+    r"|(?:Пролог|Предисловие|Эпилог|Введение|Послесловие|Приложение))$"
+)
+_MARKERS_RE = re.compile(r"^(?:[#*§•]+\s*)+")
 
 
 def _split_chapters(text: str) -> list[Chapter]:
@@ -21,11 +26,13 @@ def _split_chapters(text: str) -> list[Chapter]:
     chapters: list[Chapter] = []
     current = Chapter("")
     for line in lines:
-        m = _CHAPTER_RE.match(line)
-        if m and len(line) < 120:
+        probe = clean_title(_MARKERS_RE.sub("", line).strip())
+        m = _CHAPTER_RE.match(probe)
+        if m and len(probe) < 120:
             if current.paragraphs or current.title:
                 chapters.append(current)
-            current = Chapter(m.group(1).strip() or line.strip())
+            title = clean_title(m.group(1).strip() if m.group(1) else probe)
+            current = Chapter(title)
         else:
             current.paragraphs.append(line)
     if current.paragraphs or current.title:

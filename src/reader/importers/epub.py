@@ -9,6 +9,7 @@ from urllib.parse import unquote
 from lxml import etree
 
 from ..models import Chapter, Format, ParsedBook
+from .titles import clean_title
 
 _XHTML_NS = "http://www.w3.org/1999/xhtml"
 
@@ -188,7 +189,7 @@ class EpubParser:
             paragraphs = _iter_paragraphs(root)
             if not paragraphs and not h_text:
                 continue
-            chapters.append(Chapter(title=nav.get(href, h_text), paragraphs=paragraphs))
+            chapters.append(Chapter(title=clean_title(nav.get(href, h_text)), paragraphs=paragraphs))
         return chapters
 
 

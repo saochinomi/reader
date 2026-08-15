@@ -6,6 +6,7 @@ from pathlib import Path
 from lxml import etree
 
 from ..models import Chapter, Format, ParsedBook
+from .titles import clean_title
 
 def _local(elem) -> str:
     return elem.tag.split("}")[-1].lower() if isinstance(elem.tag, str) else ""
@@ -67,7 +68,7 @@ def _parse_fb2(root: etree._Element) -> ParsedBook:
                     parent = parent.getparent()
                 if not inside_nested:
                     paragraphs.append(text)
-            chapters.append(Chapter(title=title, paragraphs=paragraphs))
+            chapters.append(Chapter(title=clean_title(title), paragraphs=paragraphs))
         return chapters
 
     for body in [e for e in root.iter() if _local(e) == "body"]:

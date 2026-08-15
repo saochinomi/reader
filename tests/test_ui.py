@@ -280,6 +280,7 @@ class TestUi:
                 assert table.styles.width.value == 98
                 search = lib.query_one("#search")
                 assert search.styles.width.value == 98
+                assert search.parent.id == "search_row"
 
                 book_id = import_book(app.db, book)
                 app.push_screen(ReaderScreen(app.db, book_id))
@@ -288,6 +289,8 @@ class TestUi:
                 content = reader.query_one("#content")
                 assert content.styles.width.value <= 84
                 assert reader.query_one("#content_row") is not None
+                chapter = reader.query_one("#chapter")
+                assert "───" in chapter.content
 
         asyncio.run(scenario())
 

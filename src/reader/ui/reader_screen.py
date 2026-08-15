@@ -84,7 +84,7 @@ class ReaderScreen(Screen):
         page = self.renderer.render(self.page_index)
         _acc, bright, _bg, _dim = self.app.accent_colors()
         title = self.book.chapters[page.chapter_index].title or "…"
-        self.query_one("#chapter", Static).update(f"[bold]{bright}{title}[/bold]")
+        self.query_one("#chapter", Static).update(f"[bold]{bright}─── {title} ───[/bold]")
         self.query_one("#content", Static).update("\n".join(page.lines) if page.lines else "…")
         total = self.renderer.page_count()
         pct = round((self.page_index + 1) * 100 / total) if total else 0

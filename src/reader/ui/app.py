@@ -103,6 +103,11 @@ Horizontal#table_row {
     align-horizontal: center;
 }
 
+Horizontal#search_row {
+    height: 3;
+    align-horizontal: center;
+}
+
 DataTable > .datatable--header {
     background: #0d0d0d;
     color: $text-muted;

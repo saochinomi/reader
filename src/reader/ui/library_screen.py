@@ -56,7 +56,8 @@ class LibraryScreen(Screen):
         yield TabBar(on_open=self._open_from_tab, on_add=self.action_add_book)
         with Horizontal(id="table_row"):
             yield DataTable(id="books")
-        yield Input(placeholder="Поиск по названию, автору, описанию…", id="search")
+        with Horizontal(id="search_row"):
+            yield Input(placeholder="Поиск по названию, автору, описанию…", id="search")
         yield StatusBar(id="statusbar")
         yield KeyBar(id="keybar")
 

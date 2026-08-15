@@ -52,6 +52,19 @@ class TestTxt:
         assert titles == ["", "Вторая глава"]
         assert book.text_length > 0
 
+    def test_marked_chapters(self, tmp_path: Path):
+        p = tmp_path / "marked.txt"
+        write_fixture(
+            p,
+            (
+                "# 1. Предисловие\n\nТекст предисловия.\n\n"
+                "## Глава 2: Пролог\n\nТекст пролога.\n\n"
+                "Глава 3. #Начало\n\nТекст начала.\n"
+            ).encode("utf-8"),
+        )
+        book = parse(p)
+        assert [c.title for c in book.chapters] == ["Предисловие", "Пролог", "Начало"]
+
 
 class TestFb2:
     def test_metadata(self, book_fb2: Path):
