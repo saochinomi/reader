@@ -11,6 +11,14 @@ class Format(str, Enum):
     TXT = "txt"
     EPUB = "epub"
     FB2 = "fb2"
+    HTML = "html"
+    MARKDOWN = "md"
+    RTF = "rtf"
+    DOCX = "docx"
+    PDF = "pdf"
+    MOBI = "mobi"
+    DJVU = "djvu"
+    DOC = "doc"
     UNKNOWN = "unknown"
 
 

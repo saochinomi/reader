@@ -9,27 +9,39 @@ FB2_NS = b"<FictionBook"
 FB2_NS2 = b"FictionBook"
 
 
+_EXT_FORMATS = {
+    "epub": Format.EPUB,
+    "fb2": Format.FB2,
+    "txt": Format.TXT,
+    "text": Format.TXT,
+    "html": Format.HTML,
+    "htm": Format.HTML,
+    "md": Format.MARKDOWN,
+    "markdown": Format.MARKDOWN,
+    "rtf": Format.RTF,
+    "docx": Format.DOCX,
+    "pdf": Format.PDF,
+    "mobi": Format.MOBI,
+    "azw": Format.MOBI,
+    "azw3": Format.MOBI,
+    "djvu": Format.DJVU,
+    "djv": Format.DJVU,
+    "doc": Format.DOC,
+}
+
+
 def detect_format(path: Path) -> Format:
     ext = path.suffix.lower().lstrip(".")
-    if ext == Format.EPUB.value:
-        return Format.EPUB
-    if ext == Format.FB2.value:
-        return Format.FB2
-    if ext == Format.TXT.value:
-        return Format.TXT
-    if ext in (".fb2.zip", ".zip"):
-        if path.suffix.lower() == ".zip":
-            import zipfile
+    if ext == "zip":
+        import zipfile
 
-            try:
-                with zipfile.ZipFile(path) as zf:
-                    if any(n.lower().endswith(".fb2") for n in zf.namelist()):
-                        return Format.FB2
-            except zipfile.BadZipFile:
-                pass
-    if ext == ".epub" or ext in (".txt", ".text"):
-        return Format(ext)
-    return Format.UNKNOWN
+        try:
+            with zipfile.ZipFile(path) as zf:
+                if any(n.lower().endswith(".fb2") for n in zf.namelist()):
+                    return Format.FB2
+        except zipfile.BadZipFile:
+            pass
+    return _EXT_FORMATS.get(ext, Format.UNKNOWN)
 
 
 def sniff(path: Path) -> Format:

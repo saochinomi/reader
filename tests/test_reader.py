@@ -99,6 +99,103 @@ class TestEpub:
         assert len(book.chapters[0].paragraphs) == 2
 
 
+class TestHtml:
+    def test_parse(self, tmp_path: Path):
+        p = tmp_path / "book.html"
+        write_fixture(
+            p,
+            (
+                "<html><head><meta charset=\"utf-8\"><title>HTML-книга</title></head><body>"
+                "<h1>Глава первая</h1><p>Текст первый.</p><p>Текст второй.</p>"
+                "<h2># 2. Подглава</h2><p>Текст третий.</p>"
+                "</body></html>"
+            ).encode("utf-8"),
+        )
+        book = parse(p)
+        assert book.format == Format.HTML
+        assert book.title == "HTML-книга"
+        assert [c.title for c in book.chapters] == ["Глава первая", "Подглава"]
+        assert book.chapters[0].paragraphs == ["Текст первый.", "Текст второй."]
+
+
+class TestMarkdown:
+    def test_parse(self, tmp_path: Path):
+        p = tmp_path / "book.md"
+        write_fixture(
+            p,
+            (
+                "# Глава 1\n\nТекст главы 1.\n\n"
+                "## Глава 2\n\n- пункт один\n- пункт два\n\n1. нумерованный\n"
+            ).encode("utf-8"),
+        )
+        book = parse(p)
+        assert book.format == Format.MARKDOWN
+        assert [c.title for c in book.chapters] == ["Глава 1", "Глава 2"]
+        assert book.chapters[1].paragraphs == ["пункт один", "пункт два", "нумерованный"]
+
+
+class TestRtf:
+    def test_parse(self, tmp_path: Path):
+        p = tmp_path / "book.rtf"
+
+        def cp1251_hex(s: str) -> str:
+            return "".join(f"\\'{b:02x}" for b in s.encode("cp1251"))
+
+        write_fixture(
+            p,
+            (
+                "{\\rtf1\\ansi\\ansicpg1251{\\fonttbl{\\f0 Arial;}}"
+                "{\\info{\\title " + cp1251_hex("Моя RTF-книга") + "}}"
+                + cp1251_hex("Глава 1")
+                + "\\par "
+                + cp1251_hex("Текст первой главы.")
+                + "\\par "
+                + cp1251_hex("Глава 2")
+                + "\\par "
+                + cp1251_hex("Текст второй главы.")
+                + "}"
+            ).encode("ascii"),
+        )
+        book = parse(p)
+        assert book.format == Format.RTF
+        assert book.title == "Моя RTF-книга"
+        assert [c.title for c in book.chapters] == ["Глава 1", "Глава 2"]
+        assert book.chapters[0].paragraphs == ["Текст первой главы."]
+
+
+class TestDocx:
+    def test_parse(self, tmp_path: Path):
+        p = tmp_path / "book.docx"
+        w = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+        document = (
+            f'<?xml version="1.0" encoding="UTF-8"?>'
+            f'<w:document xmlns:w="{w}"><w:body>'
+            f'<w:p><w:pPr><w:pStyle w:val="Heading1"/></w:pPr><w:r><w:t>Глава 1</w:t></w:r></w:p>'
+            f'<w:p><w:r><w:t>Текст главы.</w:t></w:r></w:p>'
+            f"</w:body></w:document>"
+        )
+        core = (
+            '<?xml version="1.0" encoding="UTF-8"?>'
+            '<cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" '
+            'xmlns:dc="http://purl.org/dc/elements/1.1/">'
+            "<dc:title>DOCX-книга</dc:title><dc:creator>Иван Автор</dc:creator></cp:coreProperties>"
+        )
+        import io
+        import zipfile
+
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+            zf.writestr("word/document.xml", document)
+            zf.writestr("docProps/core.xml", core)
+        write_fixture(p, buf.getvalue())
+        book = parse(p)
+        assert book.format == Format.DOCX
+        assert book.title == "DOCX-книга"
+        assert book.authors == ["Иван Автор"]
+        assert [c.title for c in book.chapters] == ["Глава 1"]
+        assert book.chapters[0].paragraphs == ["Текст главы."]
+
+
 class TestRenderer:
     def test_pagination_roundtrip(self, book_fb2: Path):
         book = parse(book_fb2)
