@@ -113,6 +113,8 @@ class TestUi:
                 lib = app.screen
                 banner = lib.query_one("#banner", Static)
                 assert "███████╗" in banner.content
+                assert "██████╔╝" in banner.content
+                assert "╚═════╝" in banner.content
                 assert lib.query_one(TabBar) is not None
                 status = lib.query_one(StatusBar)
                 assert "книг: 0" in status.content
@@ -163,6 +165,99 @@ class TestUi:
                     if "#82aaff" in keybar.content:
                         break
                 assert "#82aaff" in keybar.content
+
+        asyncio.run(scenario())
+
+    def test_parse_cache(self, tmp_path: Path):
+        _home(tmp_path)
+        book = tmp_path / "book.fb2"
+        write_fixture(book, build_fb2())
+
+        from reader.cache import load_or_parse
+        from reader.db import LibraryDB
+        from reader.library import import_book
+        from reader.models import file_hash
+
+        db = LibraryDB(tmp_path / "lib.db")
+        import_book(db, book)
+        hash_ = file_hash(book)
+        assert db.get_parsed_cache(hash_) is not None
+
+        import reader.cache as cache_module
+
+        def boom(path):
+            raise AssertionError("кэш не должен парсить файл")
+
+        orig = cache_module.parse
+        cache_module.parse = boom
+        try:
+            parsed = load_or_parse(db, book)
+            assert parsed.title == "Тестовая книга"
+            db.clear_parsed_cache(hash_)
+            with pytest.raises(AssertionError):
+                load_or_parse(db, book)
+        finally:
+            cache_module.parse = orig
+        db.close()
+
+    def test_bookmark_jumps(self, tmp_path: Path):
+        _home(tmp_path)
+        book = tmp_path / "big.txt"
+        big = ("Абзац книги. Ещё предложение текста.\n\n" * 300).encode("utf-8")
+        write_fixture(book, big)
+
+        async def scenario():
+            from reader.library import import_book
+
+            app = ReaderApp(tmp_path / "lib.db")
+            async with app.run_test(size=(100, 40)) as pilot:
+                book_id = import_book(app.db, book)
+                app.push_screen(ReaderScreen(app.db, book_id))
+                await pilot.pause()
+                reader = app.screen
+                await pilot.press("s")
+                await pilot.pause()
+                await pilot.press("j", "j", "j", "j", "j", "s")
+                await pilot.pause()
+                assert len(app.db.bookmarks(book_id)) == 2
+
+                await pilot.press("[")
+                await pilot.pause()
+                assert reader.page_index < 3
+                await pilot.press("]")
+                await pilot.pause()
+                assert reader.page_index >= 3
+
+        asyncio.run(scenario())
+
+    def test_all_bookmarks_global(self, tmp_path: Path):
+        _home(tmp_path)
+        b1 = tmp_path / "a.fb2"
+        b2 = tmp_path / "b.epub"
+        write_fixture(b1, build_fb2())
+        write_fixture(b2, build_epub())
+
+        async def scenario():
+            from reader.library import import_book
+            from reader.ui.all_bookmarks_screen import AllBookmarksScreen
+
+            app = ReaderApp(tmp_path / "lib.db")
+            async with app.run_test(size=(100, 40)) as pilot:
+                id1 = import_book(app.db, b1)
+                id2 = import_book(app.db, b2)
+                app.db.add_bookmark(id1, 0, 1, "заметка 1")
+                app.db.add_bookmark(id2, 1, 2, "заметка 2")
+
+                await pilot.press("B")
+                await pilot.pause()
+                screen = app.screen
+                assert isinstance(screen, AllBookmarksScreen)
+                ol = screen.query_one("#list")
+                assert ol.option_count == 2
+                await pilot.press("enter")
+                await pilot.pause()
+                assert isinstance(app.screen, ReaderScreen)
+                assert app.screen.book_id == id1
 
         asyncio.run(scenario())
 

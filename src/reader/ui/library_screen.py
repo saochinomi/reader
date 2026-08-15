@@ -10,6 +10,7 @@ from textual.screen import Screen
 from textual.widgets import DataTable, Footer, Input, Static
 
 from ..db import LibraryDB
+from .all_bookmarks_screen import AllBookmarksScreen
 from .banner import banner
 from .color_screen import ColorScreen
 from .confirm_screen import ConfirmScreen
@@ -28,6 +29,7 @@ class LibraryScreen(Screen):
         Binding("/", "focus_search", "Поиск"),
         Binding("u", "rescan", "Сканировать"),
         Binding("d", "delete_book", "Удалить"),
+        Binding("B", "show_all_bookmarks", "Закладки"),
         Binding("r", "reimport", "Перечитать"),
         Binding("s", "cycle_sort", "Сортировка"),
         Binding("c", "choose_color", "Цвет"),
@@ -255,6 +257,22 @@ class LibraryScreen(Screen):
 
     def action_choose_color(self) -> None:
         self.app.push_screen(ColorScreen())
+
+    def action_show_all_bookmarks(self) -> None:
+        self.app.push_screen(AllBookmarksScreen(), self._on_all_bookmark)
+
+    def _on_all_bookmark(self, result: tuple[int, int, int] | None) -> None:
+        if result is None:
+            return
+        book_id, chapter, paragraph = result
+        self._selected_id = book_id
+        try:
+            self.app.get_book(book_id)
+        except Exception as e:  # noqa: BLE001
+            self.app.notify(f"Не удалось открыть книгу: {e}", severity="error")
+            return
+        self._update_tabs(active=book_id)
+        self.app.push_screen(ReaderScreen(self.db, book_id, jump_to=(chapter, paragraph)))
 
     # --- события ---
 

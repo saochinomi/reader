@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import pickle
 from pathlib import Path
 
 from .db import LibraryDB
@@ -13,6 +14,7 @@ def add_parsed_book(db: LibraryDB, path: Path, book: ParsedBook, force: bool = F
     existing = db.find_by_path(path)
     if existing and existing["hash"] == hash_ and not force:
         return existing["id"]
+    db.put_parsed_cache(hash_, pickle.dumps(book))
     return db.upsert_book(path, book, hash_)
 
 

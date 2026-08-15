@@ -278,7 +278,7 @@ class ReaderApp(App):
             row = self.db.get_book(book_id)
             if row is None:
                 raise KeyError(f"Книга {book_id} не найдена в БД")
-            from ..importers import parse
+            from ..cache import load_or_parse
 
-            self._books_cache[book_id] = parse(Path(row["path"]))
+            self._books_cache[book_id] = load_or_parse(self.db, Path(row["path"]))
         return self._books_cache[book_id]

@@ -2,23 +2,23 @@ from __future__ import annotations
 
 _LETTERS = {
     "R": [
-        " ██████╗",
+        "██████╗",
         "██╔══██╗",
-        "███████║",
-        "██╔══██║",
+        "██████╔╝",
+        "██╔══██╗",
         "██║  ██║",
         "╚═╝  ╚═╝",
     ],
     "E": [
         "███████╗",
         "██╔════╝",
-        "█████╗  ",
-        "██╔══╝  ",
+        "█████╗",
+        "██╔══╝",
         "███████╗",
         "╚══════╝",
     ],
     "A": [
-        " █████╗ ",
+        " █████╗",
         "██╔══██╗",
         "███████║",
         "██╔══██║",
@@ -26,16 +26,16 @@ _LETTERS = {
         "╚═╝  ╚═╝",
     ],
     "D": [
-        "██████╗ ",
+        "██████╗",
         "██╔══██╗",
         "██║  ██║",
         "██║  ██║",
         "██████╔╝",
-        "╚═════╝ ",
+        "╚═════╝",
     ],
 }
 
-_GAP = "  "
+_GAP = " "
 
 
 def banner(word: str = "READER") -> str:
@@ -44,5 +44,5 @@ def banner(word: str = "READER") -> str:
     if not letters:
         return word
     height = len(letters[0])
-    rows = [_GAP.join(letter[r] for letter in letters) for r in range(height)]
+    rows = [_GAP.join(letter[r] for letter in letters).rstrip() for r in range(height)]
     return "\n".join(rows)

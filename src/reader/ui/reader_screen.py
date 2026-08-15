@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+from bisect import bisect_left, bisect_right
+
 from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.screen import Screen
-from textual.widgets import Footer, Static
+from textual.widgets import Static
 
 from ..db import LibraryDB
 from ..models import ParsedBook
@@ -23,6 +25,8 @@ class ReaderScreen(Screen):
         Binding("k,up,backspace", "prev_page", "Пред. стр."),
         Binding("n", "next_chapter", "След. глава"),
         Binding("p", "prev_chapter", "Пред. глава"),
+        Binding("[", "prev_bookmark", "Пред. закл."),
+        Binding("]", "next_bookmark", "След. закл."),
         Binding("s", "add_bookmark", "Закладка"),
         Binding("b", "show_bookmarks", "Закладки"),
         Binding("f", "cycle_width", "Ширина"),
@@ -31,10 +35,11 @@ class ReaderScreen(Screen):
         Binding("escape,q", "back", "Назад"),
     ]
 
-    def __init__(self, db: LibraryDB, book_id: int):
+    def __init__(self, db: LibraryDB, book_id: int, jump_to: tuple[int, int] | None = None):
         super().__init__()
         self.db = db
         self.book_id = book_id
+        self.jump_to = jump_to
         self.book: ParsedBook | None = None
         self.renderer: BookRenderer | None = None
         self.page_index = 0
@@ -50,9 +55,12 @@ class ReaderScreen(Screen):
         self.query_one("#keybar", KeyBar).set_keys(KeyBar.reader())
         self.book = self.app.get_book(self.book_id)
         self._rebuild_renderer()
-        row = self.db.get_progress(self.book_id)
-        if row is not None:
-            self.page_index = self.renderer.locate(row["chapter"], row["paragraph"])
+        if self.jump_to is not None:
+            self.page_index = self.renderer.locate(*self.jump_to)
+        else:
+            row = self.db.get_progress(self.book_id)
+            if row is not None:
+                self.page_index = self.renderer.locate(row["chapter"], row["paragraph"])
         self._draw()
 
     def _rebuild_renderer(self) -> None:
@@ -130,6 +138,42 @@ class ReaderScreen(Screen):
         note = (page.lines[0] if page.lines else "")[:60]
         self.db.add_bookmark(self.book_id, page.chapter_index, page.paragraph_index, note)
         self.app.notify("Закладка добавлена", severity="information")
+
+    def _jump_to_bookmark(self, pos: tuple[int, int], direction: int) -> None:
+        assert self.renderer is not None
+        marks = sorted(
+            ((bm["id"], bm["chapter"], bm["paragraph"]) for bm in self.db.bookmarks(self.book_id)),
+            key=lambda m: (m[1], m[2]),
+        )
+        if not marks:
+            self.app.notify("Закладок нет (s — добавить)", severity="warning")
+            return
+        positions = [(m[1], m[2]) for m in marks]
+        index = bisect_right(positions, pos) if direction > 0 else bisect_left(positions, pos) - 1
+        if index < 0 or index >= len(marks):
+            self.app.notify(
+                "Дальше закладок нет" if direction > 0 else "Это первая закладка",
+                severity="information",
+            )
+            return
+        bookmark_id, chapter, paragraph = marks[index]
+        self.page_index = self.renderer.locate(chapter, paragraph)
+        self._draw()
+        note = next(
+            (bm["note"] or "…" for bm in self.db.bookmarks(self.book_id) if bm["id"] == bookmark_id),
+            "…",
+        )
+        self.app.notify(f"Закладка: гл. {chapter + 1} — {note}")
+
+    def action_next_bookmark(self) -> None:
+        assert self.renderer is not None
+        page = self.renderer.render(self.page_index)
+        self._jump_to_bookmark((page.chapter_index, page.paragraph_index), +1)
+
+    def action_prev_bookmark(self) -> None:
+        assert self.renderer is not None
+        page = self.renderer.render(self.page_index)
+        self._jump_to_bookmark((page.chapter_index, page.paragraph_index), -1)
 
     def action_show_bookmarks(self) -> None:
         assert self.renderer is not None

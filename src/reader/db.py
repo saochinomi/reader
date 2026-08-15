@@ -46,6 +46,11 @@ class LibraryDB:
                 note TEXT NOT NULL DEFAULT '',
                 created_at INTEGER NOT NULL DEFAULT (unixepoch())
             );
+            CREATE TABLE IF NOT EXISTS parsed_cache (
+                hash TEXT PRIMARY KEY,
+                blob BLOB NOT NULL,
+                saved_at INTEGER NOT NULL DEFAULT (unixepoch())
+            );
             CREATE INDEX IF NOT EXISTS idx_bookmarks_book ON bookmarks(book_id);
             """
         )
@@ -158,6 +163,39 @@ class LibraryDB:
 
     def remove_bookmark(self, bookmark_id: int) -> None:
         self._conn.execute("DELETE FROM bookmarks WHERE id = ?", (bookmark_id,))
+        self._conn.commit()
+
+    def all_bookmarks(self) -> list[sqlite3.Row]:
+        cur = self._conn.execute(
+            """
+            SELECT bm.*, b.title AS book_title
+            FROM bookmarks bm JOIN books b ON b.id = bm.book_id
+            ORDER BY bm.book_id, bm.chapter, bm.paragraph
+            """
+        )
+        return cur.fetchall()
+
+    # --- кэш разобранных книг ---
+
+    def get_parsed_cache(self, hash_: str) -> bytes | None:
+        cur = self._conn.execute(
+            "SELECT blob FROM parsed_cache WHERE hash = ?", (hash_,)
+        )
+        row = cur.fetchone()
+        return row["blob"] if row else None
+
+    def put_parsed_cache(self, hash_: str, blob: bytes) -> None:
+        self._conn.execute(
+            """
+            INSERT INTO parsed_cache (hash, blob) VALUES (?, ?)
+            ON CONFLICT(hash) DO UPDATE SET blob = excluded.blob
+            """,
+            (hash_, blob),
+        )
+        self._conn.commit()
+
+    def clear_parsed_cache(self, hash_: str) -> None:
+        self._conn.execute("DELETE FROM parsed_cache WHERE hash = ?", (hash_,))
         self._conn.commit()
 
     def search_books(self, query: str) -> list[sqlite3.Row]:
