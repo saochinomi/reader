@@ -104,6 +104,7 @@ DataTable {
 
 Horizontal#last_row {
     height: auto;
+    margin-top: 1;
     align-horizontal: center;
 }
 

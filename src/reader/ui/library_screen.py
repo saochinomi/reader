@@ -154,13 +154,13 @@ class LibraryScreen(Screen):
         self._refresh_last_book()
 
     def _refresh_last_book(self) -> None:
-        accent, bright, _bg, _dim = self.app.accent_colors()
+        accent, _bright, _bg, _dim = self.app.accent_colors()
         recent = self.db.recent_books(1)
         if not recent:
             self.query_one("#last_book", Static).update(
                 "\n".join(
                     [
-                        f"[bold]{bright}─── Последняя книга ───[/bold]",
+                        "[bold]─── Последняя книга ───[/bold]",
                         "[#5c5c5c]Нет недавних книг[/]",
                         f"[{accent}]i — добавить книгу[/]",
                     ]
@@ -178,7 +178,7 @@ class LibraryScreen(Screen):
             done = sum(c["n"] for c in json.loads(row["chapters"])[:chapter]) + paragraph
             pct = f"{round(done * 100 / total)}%"
         lines = [
-            f"[bold]{bright}─── Последняя книга ───[/bold]",
+            "[bold]─── Последняя книга ───[/bold]",
             f"[bold]{row['title']}[/bold]",
         ]
         if authors:
