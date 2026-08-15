@@ -117,6 +117,8 @@ class TestUi:
                 assert "╚═════╝" in banner.content
                 lines = banner.content.split("\n")
                 assert len(set(len(l) for l in lines)) == 1
+                assert lines[0].rstrip() == "██████╗ ███████╗ █████╗ ██████╗ ███████╗██████╗"
+                assert lines[2].rstrip() == "██████╔╝█████╗  ███████║██║  ██║█████╗  ██████╔╝"
                 assert lib.query_one(TabBar) is not None
                 status = lib.query_one(StatusBar)
                 assert "книг: 0" in status.content
