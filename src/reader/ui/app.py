@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import time
 from pathlib import Path
 
 from textual.app import App
@@ -14,6 +15,9 @@ from .reader_screen import ReaderScreen
 
 CONFIG_DIR = Path.home() / ".config" / "reader"
 CONFIG_FILE = CONFIG_DIR / "config.json"
+
+_TIMER_CHOICES = (15, 30, 45, 60, 90)
+_DEFAULT_TIMER_MINUTES = 30
 
 
 def _config_file() -> Path:
@@ -215,28 +219,50 @@ class ReaderApp(App):
         self.open_path = open_path
         self._books_cache: dict[int, ParsedBook] = {}
         self._accent_name = self._load_accent()
+        self._timer_minutes = self._load_timer_minutes()
+        self._timer_left: float = float(self._timer_minutes * 60)
+        self._timer_running = False
+        self._timer_deadline = 0.0
         self._register_themes()
         self.theme = f"reader-{self._accent_name}"
 
     # --- настройка акцентного цвета ---
 
     @staticmethod
-    def _load_accent() -> str:
+    def _read_config() -> dict:
         try:
-            data = json.loads(_config_file().read_text(encoding="utf-8"))
-            name = data.get("accent", theme.DEFAULT)
-            if name in theme.PALETTES:
-                return name
+            return json.loads(_config_file().read_text(encoding="utf-8"))
         except (OSError, ValueError):
-            pass
+            return {}
+
+    @staticmethod
+    def _load_accent() -> str:
+        name = ReaderApp._read_config().get("accent", theme.DEFAULT)
+        if name in theme.PALETTES:
+            return name
         return theme.DEFAULT
 
     @staticmethod
-    def _save_accent(name: str) -> None:
+    def _load_timer_minutes() -> int:
+        try:
+            minutes = int(ReaderApp._read_config().get("timer_minutes", _DEFAULT_TIMER_MINUTES))
+            if 5 <= minutes <= 180:
+                return minutes
+        except (TypeError, ValueError):
+            pass
+        return _DEFAULT_TIMER_MINUTES
+
+    def _save_config(self) -> None:
         try:
             path = _config_file()
             path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text(json.dumps({"accent": name}, ensure_ascii=False), encoding="utf-8")
+            path.write_text(
+                json.dumps(
+                    {"accent": self._accent_name, "timer_minutes": self._timer_minutes},
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
         except OSError:
             pass
 
@@ -267,7 +293,58 @@ class ReaderApp(App):
             return
         self._accent_name = name
         self.theme = f"reader-{name}"
-        self._save_accent(name)
+        self._save_config()
+
+    # --- таймер чтения ---
+
+    def timer_choices(self) -> tuple[int, ...]:
+        return _TIMER_CHOICES
+
+    def timer_minutes(self) -> int:
+        return self._timer_minutes
+
+    def timer_running(self) -> bool:
+        return self._timer_running
+
+    def timer_left_seconds(self) -> float:
+        return self._timer_left
+
+    def set_timer_minutes(self, minutes: int) -> None:
+        if minutes not in _TIMER_CHOICES:
+            return
+        self._timer_minutes = minutes
+        self._timer_left = float(minutes * 60)
+        self._timer_running = False
+        self._save_config()
+
+    def timer_start_pause(self) -> None:
+        if self._timer_running:
+            self._timer_left = max(0.0, self._timer_deadline - time.monotonic())
+            self._timer_running = False
+            return
+        if self._timer_left <= 0:
+            self._timer_left = float(self._timer_minutes * 60)
+        self._timer_deadline = time.monotonic() + self._timer_left
+        self._timer_running = True
+
+    def timer_reset(self) -> None:
+        self._timer_left = float(self._timer_minutes * 60)
+        self._timer_running = False
+
+    def timer_tick(self) -> None:
+        if not self._timer_running:
+            return
+        self._timer_left = max(0.0, self._timer_deadline - time.monotonic())
+        if self._timer_left <= 0:
+            self._timer_running = False
+            self.notify("⏳ Время чтения вышло — отдохните!", severity="warning")
+
+    def timer_text(self) -> str:
+        total = self._timer_minutes * 60
+        left = int(self._timer_left + 0.999)
+        mm, ss = divmod(left, 60)
+        icon = "⏳" if self._timer_running or left >= total else "⏸"
+        return f"{icon} {mm:02d}:{ss:02d}"
 
     def on_mount(self) -> None:
         books_dir = Path.home() / "Books"

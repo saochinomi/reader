@@ -16,6 +16,7 @@ from .color_screen import ColorScreen
 from .help_screen import HelpScreen
 from .key_bar import KeyBar
 from .status_bar import StatusBar
+from .timer_screen import TimerScreen
 
 _WIDTH_MODES = (1.0, 0.8, 0.65)
 _MAX_TEXT_WIDTH = 84
@@ -33,6 +34,7 @@ class ReaderScreen(Screen):
         Binding("b", "show_bookmarks", "Закладки"),
         Binding("f", "cycle_width", "Ширина"),
         Binding("c", "choose_color", "Цвет"),
+        Binding("t", "show_timer", "Таймер"),
         Binding("?", "show_help", "Помощь"),
         Binding("escape,q", "back", "Назад"),
     ]
@@ -57,6 +59,7 @@ class ReaderScreen(Screen):
     def on_mount(self) -> None:
         self.query_one("#keybar", KeyBar).set_keys(KeyBar.reader())
         self.book = self.app.get_book(self.book_id)
+        self.set_interval(1.0, self._timer_tick)
         self._rebuild_renderer()
         if self.jump_to is not None:
             self.page_index = self.renderer.locate(*self.jump_to)
@@ -86,6 +89,13 @@ class ReaderScreen(Screen):
         title = self.book.chapters[page.chapter_index].title or "…"
         self.query_one("#chapter", Static).update(f"[bold]{bright}─── {title} ───[/bold]")
         self.query_one("#content", Static).update("\n".join(page.lines) if page.lines else "…")
+        self._refresh_status(page)
+        self._save_progress(page.chapter_index, page.paragraph_index)
+
+    def _refresh_status(self, page=None) -> None:
+        assert self.renderer is not None
+        if page is None:
+            page = self.renderer.render(self.page_index)
         total = self.renderer.page_count()
         pct = round((self.page_index + 1) * 100 / total) if total else 0
         self.query_one("#statusbar", StatusBar).read(
@@ -94,8 +104,12 @@ class ReaderScreen(Screen):
             page=f"стр. {self.page_index + 1}/{total}",
             fmt=self.book.format.value.upper(),
             pct=pct,
+            timer=self.app.timer_text(),
         )
-        self._save_progress(page.chapter_index, page.paragraph_index)
+
+    def _timer_tick(self) -> None:
+        self.app.timer_tick()
+        self._refresh_status()
 
     def _save_progress(self, chapter: int, paragraph: int) -> None:
         self.db.save_progress(self.book_id, chapter, paragraph, self.page_index)
@@ -208,6 +222,9 @@ class ReaderScreen(Screen):
 
     def action_choose_color(self) -> None:
         self.app.push_screen(ColorScreen())
+
+    def action_show_timer(self) -> None:
+        self.app.push_screen(TimerScreen())
 
     def on_screen_resume(self, event) -> None:
         self.query_one("#keybar", KeyBar).set_keys(KeyBar.reader())

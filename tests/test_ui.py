@@ -294,6 +294,47 @@ class TestUi:
 
         asyncio.run(scenario())
 
+    def test_reading_timer(self, tmp_path: Path):
+        _home(tmp_path)
+        book = tmp_path / "book.fb2"
+        write_fixture(book, build_fb2())
+
+        async def scenario():
+            app = ReaderApp(tmp_path / "lib.db")
+            async with app.run_test(size=(100, 40)) as pilot:
+                lib = app.screen
+                assert app.timer_minutes() == 30
+                assert "⏳ 30:00" in lib.query_one("#statusbar", StatusBar).content
+                assert "30:00" in app.timer_text()
+
+                app.set_timer_minutes(45)
+                assert app.timer_minutes() == 45
+                assert "timer_minutes" in (tmp_path / ".config" / "reader" / "config.json").read_text(
+                    encoding="utf-8"
+                )
+
+                await pilot.press("t")
+                await pilot.pause()
+                assert app.screen.__class__.__name__ == "TimerScreen"
+                await pilot.press("escape")
+                await pilot.pause()
+
+                app.timer_start_pause()
+                assert app.timer_running()
+                app._timer_deadline = __import__("time").monotonic() - 5
+                app.timer_tick()
+                assert not app.timer_running()
+                assert app.timer_left_seconds() == 0
+
+                from reader.library import import_book
+
+                app.push_screen(ReaderScreen(app.db, import_book(app.db, book)))
+                await pilot.pause()
+                status = app.screen.query_one("#statusbar", StatusBar)
+                assert "⏳" in status.content or "⏸" in status.content
+
+        asyncio.run(scenario())
+
     def test_search_cyrillic(self, tmp_path: Path):
         _home(tmp_path)
         b1 = tmp_path / "a.fb2"

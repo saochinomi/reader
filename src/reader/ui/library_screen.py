@@ -21,6 +21,7 @@ from .key_bar import KeyBar
 from .reader_screen import ReaderScreen
 from .status_bar import StatusBar
 from .tab_bar import TabBar
+from .timer_screen import TimerScreen
 
 
 class LibraryScreen(Screen):
@@ -34,6 +35,7 @@ class LibraryScreen(Screen):
         Binding("r", "reimport", "Перечитать"),
         Binding("s", "cycle_sort", "Сортировка"),
         Binding("c", "choose_color", "Цвет"),
+        Binding("t", "show_timer", "Таймер"),
         Binding("?", "show_help", "Помощь"),
         Binding("q", "quit_app", "Выход"),
     ]
@@ -69,6 +71,7 @@ class LibraryScreen(Screen):
         self._resize_center()
         self._refresh_table()
         self._update_tabs()
+        self.set_interval(1.0, self._timer_tick)
         self.query_one("#keybar", KeyBar).set_keys(KeyBar.library())
         if self.import_dir_on_start:
             self._import_dir(self.import_dir_on_start)
@@ -123,7 +126,18 @@ class LibraryScreen(Screen):
         query = self.query_one("#search", Input).value.strip()
         sort_label = dict(self.SORT_KEYS)[self.sort_key]
         self.query_one("#statusbar", StatusBar).browse(
-            len(self._rows), sort_label=sort_label, query=query
+            len(self._rows), sort_label=sort_label, query=query, timer=self.app.timer_text()
+        )
+
+    def _timer_tick(self) -> None:
+        self.app.timer_tick()
+        self._refresh_status()
+
+    def _refresh_status(self) -> None:
+        query = self.query_one("#search", Input).value.strip()
+        sort_label = dict(self.SORT_KEYS)[self.sort_key]
+        self.query_one("#statusbar", StatusBar).browse(
+            len(self._rows), sort_label=sort_label, query=query, timer=self.app.timer_text()
         )
 
     @staticmethod
@@ -270,6 +284,9 @@ class LibraryScreen(Screen):
 
     def action_choose_color(self) -> None:
         self.app.push_screen(ColorScreen())
+
+    def action_show_timer(self) -> None:
+        self.app.push_screen(TimerScreen())
 
     def action_show_all_bookmarks(self) -> None:
         self.app.push_screen(AllBookmarksScreen(), self._on_all_bookmark)
