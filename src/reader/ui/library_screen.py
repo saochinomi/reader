@@ -72,7 +72,7 @@ class LibraryScreen(Screen):
         table = self.query_one("#books", DataTable)
         table.cursor_type = "row"
         table.zebra_stripes = True
-        table.add_columns("Название", "Автор", "Год", "Формат", "Прогресс")
+        table.add_columns("Название", "Закладки", "Версия", "Формат", "Прогресс")
         self._resize_center()
         self._refresh_table()
         self._update_tabs()
@@ -132,12 +132,13 @@ class LibraryScreen(Screen):
         self._rows.clear()
         selected = self._selected_id
         selected_row = 0
+        summary = self.db.bookmarks_summary()
         for i, row in enumerate(self._sorted(self.query_one("#search", Input).value)):
             key = str(row["id"])
             self._rows[key] = row
             table.add_row(
                 row["title"],
-                ", ".join(json.loads(row["authors"])),
+                self._bookmarks_text(summary, row["id"]),
                 row["year"] or "—",
                 row["format"].upper(),
                 self._progress_text(row),
@@ -148,6 +149,15 @@ class LibraryScreen(Screen):
         if self._rows:
             table.move_cursor(row=selected_row)
         self._refresh_status()
+
+    @staticmethod
+    def _bookmarks_text(summary: dict, book_id: int) -> str:
+        count, note = summary.get(book_id, (0, ""))
+        if not count:
+            return "—"
+        if note:
+            return f"⚑ {count} · {note[:34]}"
+        return f"⚑ {count}"
 
     def _timer_tick(self) -> None:
         self.app.timer_tick()

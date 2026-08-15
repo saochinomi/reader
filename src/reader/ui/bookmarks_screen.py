@@ -9,6 +9,8 @@ from textual.screen import Screen
 from textual.widgets import Footer, Label, OptionList, Static
 from textual.widgets.option_list import Option
 
+from .edit_note_screen import EditNoteScreen
+
 
 class BookmarksScreen(Screen[Optional[int]]):
     """Список закладок книги. Возвращает id закладки при выборе."""
@@ -17,6 +19,7 @@ class BookmarksScreen(Screen[Optional[int]]):
         Binding("escape", "close", "Закрыть"),
         Binding("delete", "delete", "Удалить"),
         Binding("d", "delete", "Удалить"),
+        Binding("e", "edit_note", "Заметка"),
     ]
 
     def __init__(self, book_id: int, bookmarks, on_deleted):
@@ -26,7 +29,7 @@ class BookmarksScreen(Screen[Optional[int]]):
         self.on_deleted = on_deleted
 
     def compose(self) -> ComposeResult:
-        yield Static("Закладки — Enter: перейти, Delete: удалить, Esc: закрыть", id="bookmark_title")
+        yield Static("Закладки — Enter: перейти · E: заметка · D: удалить · Esc: закрыть", id="bookmark_title")
         yield OptionList(id="list")
         yield Footer()
 
@@ -44,6 +47,25 @@ class BookmarksScreen(Screen[Optional[int]]):
             )
         if self.bookmarks:
             ol.highlighted = 0
+
+    def _current_bookmark(self) -> dict | None:
+        ol = self.query_one("#list", OptionList)
+        option = ol.highlighted_option
+        if option is None or option.id is None:
+            return None
+        return next((b for b in self.bookmarks if str(b["id"]) == option.id), None)
+
+    def action_edit_note(self) -> None:
+        bm = self._current_bookmark()
+        if bm is None:
+            return
+
+        def on_note(note: str | None) -> None:
+            if note is not None:
+                self.app.db.update_bookmark_note(bm["id"], note)
+            self._fill()
+
+        self.app.push_screen(EditNoteScreen(bm["note"] or ""), on_note)
 
     def action_close(self) -> None:
         self.dismiss(None)

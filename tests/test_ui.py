@@ -376,6 +376,35 @@ class TestUi:
 
         asyncio.run(scenario())
 
+    def test_bookmark_note_edit(self, tmp_path: Path):
+        _home(tmp_path)
+        book = tmp_path / "book.fb2"
+        write_fixture(book, build_fb2())
+
+        async def scenario():
+            app = ReaderApp(tmp_path / "lib.db")
+            async with app.run_test(size=(100, 40)) as pilot:
+                from reader.library import import_book
+
+                book_id = import_book(app.db, book)
+                app.db.add_bookmark(book_id, 0, 1, "старая заметка")
+                app.push_screen(ReaderScreen(app.db, book_id))
+                await pilot.pause()
+
+                await pilot.press("b")
+                await pilot.pause()
+                assert app.screen.__class__.__name__ == "BookmarksScreen"
+                await pilot.press("e")
+                await pilot.pause()
+                assert app.screen.__class__.__name__ == "EditNoteScreen"
+                await pilot.press("ctrl+u")
+                await pilot.press("с", "т", "р", ".", " ", "1", "1", "3", "6")
+                await pilot.press("enter")
+                await pilot.pause()
+                assert app.db.bookmarks(book_id)[0]["note"] == "стр. 1136"
+
+        asyncio.run(scenario())
+
     def test_search_cyrillic(self, tmp_path: Path):
         _home(tmp_path)
         b1 = tmp_path / "a.fb2"

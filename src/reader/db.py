@@ -176,6 +176,25 @@ class LibraryDB:
         self._conn.execute("DELETE FROM bookmarks WHERE id = ?", (bookmark_id,))
         self._conn.commit()
 
+    def update_bookmark_note(self, bookmark_id: int, note: str) -> None:
+        self._conn.execute(
+            "UPDATE bookmarks SET note = ? WHERE id = ?", (note.strip(), bookmark_id)
+        )
+        self._conn.commit()
+
+    def bookmarks_summary(self) -> dict[int, tuple[int, str]]:
+        """book_id -> (число закладок, заметка последней)."""
+        rows = self._conn.execute(
+            """
+            SELECT bm.book_id, COUNT(*) AS n,
+                   (SELECT bm2.note FROM bookmarks bm2
+                    WHERE bm2.book_id = bm.book_id
+                    ORDER BY bm2.id DESC LIMIT 1) AS last_note
+            FROM bookmarks bm GROUP BY bm.book_id
+            """
+        ).fetchall()
+        return {r["book_id"]: (r["n"], r["last_note"] or "") for r in rows}
+
     def all_bookmarks(self) -> list[sqlite3.Row]:
         cur = self._conn.execute(
             """

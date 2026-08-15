@@ -130,8 +130,12 @@ class TestDb:
         db.add_bookmark(book_id, 0, 1, "важное место")
         bms = db.bookmarks(book_id)
         assert len(bms) == 1
+        db.update_bookmark_note(bms[0]["id"], "стр. 1136–1140 · Jcc")
+        assert db.bookmarks(book_id)[0]["note"] == "стр. 1136–1140 · Jcc"
+        assert db.bookmarks_summary() == {book_id: (1, "стр. 1136–1140 · Jcc")}
         db.remove_bookmark(bms[0]["id"])
         assert db.bookmarks(book_id) == []
+        assert db.bookmarks_summary() == {}
 
     def test_shelves(self, db: LibraryDB, book_fb2: Path, book_epub: Path):
         book = parse(book_fb2)
