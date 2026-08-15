@@ -76,7 +76,7 @@ class LibraryScreen(Screen):
         table = self.query_one("#books", DataTable)
         table.cursor_type = "row"
         table.zebra_stripes = True
-        table.add_columns("Название", "Формат", "Прогресс")
+        table.add_columns("Название", "⚑", "Формат", "Прогресс")
         self._resize_center()
         self._refresh_table()
         self._update_tabs()
@@ -137,11 +137,13 @@ class LibraryScreen(Screen):
         self._rows.clear()
         selected = self._selected_id
         selected_row = 0
+        summary = self.db.bookmarks_summary()
         for i, row in enumerate(self._sorted(self.query_one("#search", Input).value)):
             key = str(row["id"])
             self._rows[key] = row
             table.add_row(
                 row["title"],
+                self._bookmarks_text(summary.get(row["id"], (0, ""))[0]),
                 row["format"].upper(),
                 self._progress_text(row),
                 key=key,
@@ -152,6 +154,10 @@ class LibraryScreen(Screen):
             table.move_cursor(row=selected_row)
         self._refresh_status()
         self._refresh_last_book()
+
+    @staticmethod
+    def _bookmarks_text(count: int) -> str:
+        return f"⚑ {count}" if count else ""
 
     def _refresh_last_book(self) -> None:
         accent, _bright, _bg, _dim = self.app.accent_colors()

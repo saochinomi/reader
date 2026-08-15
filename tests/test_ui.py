@@ -4,7 +4,7 @@ import asyncio
 from pathlib import Path
 
 import pytest
-from textual.widgets import Button, DirectoryTree, Static
+from textual.widgets import Button, DataTable, DirectoryTree, Static
 
 from reader.ui.app import ReaderApp
 from reader.ui.file_picker_screen import FilePickerScreen
@@ -322,6 +322,72 @@ class TestUi:
                 table = lib.query_one("#books")
                 assert table.styles.width.value == 78
                 assert card.styles.width.value == 78
+
+        asyncio.run(scenario())
+
+    def test_bookmarks_column_in_library(self, tmp_path: Path):
+        _home(tmp_path)
+        b1 = tmp_path / "a.fb2"
+        b2 = tmp_path / "b.epub"
+        write_fixture(b1, build_fb2())
+        write_fixture(b2, build_epub())
+
+        async def scenario():
+            from reader.library import import_book
+
+            app = ReaderApp(tmp_path / "lib.db")
+            async with app.run_test(size=(100, 40)) as pilot:
+                id1 = import_book(app.db, b1)
+                import_book(app.db, b2)
+                lib = app.screen
+                lib._refresh_table()
+                table = lib.query_one("#books", DataTable)
+                assert table.get_row_at(0)[1] == ""
+                app.db.add_bookmark(id1, 0, 1, "заметка")
+                app.db.add_bookmark(id1, 1, 2, "")
+                lib._refresh_table()
+                assert table.get_row_at(0)[1] == "⚑ 2"
+
+        asyncio.run(scenario())
+
+    def test_highlight_resume_spot(self, tmp_path: Path):
+        _home(tmp_path)
+        book = tmp_path / "book.fb2"
+        write_fixture(book, build_fb2())
+
+        async def scenario():
+            from reader.library import import_book
+
+            app = ReaderApp(tmp_path / "lib.db")
+            async with app.run_test(size=(100, 40)) as pilot:
+                book_id = import_book(app.db, book)
+                app.db.save_progress(book_id, 1, 1, 1)
+                app.push_screen(ReaderScreen(app.db, book_id))
+                await pilot.pause()
+                reader = app.screen
+                content = reader.query_one("#content")
+                assert "[reverse]" in content.content  # type: ignore
+                await pilot.pause(1.6)
+                assert "[reverse]" not in content.content  # type: ignore
+
+        asyncio.run(scenario())
+
+    def test_no_highlight_for_new_book(self, tmp_path: Path):
+        _home(tmp_path)
+        book = tmp_path / "book.fb2"
+        write_fixture(book, build_fb2())
+
+        async def scenario():
+            from reader.library import import_book
+
+            app = ReaderApp(tmp_path / "lib.db")
+            async with app.run_test(size=(100, 40)) as pilot:
+                book_id = import_book(app.db, book)
+                app.push_screen(ReaderScreen(app.db, book_id))
+                await pilot.pause()
+                reader = app.screen
+                content = reader.query_one("#content")
+                assert "[reverse]" not in content.content  # type: ignore
 
         asyncio.run(scenario())
 

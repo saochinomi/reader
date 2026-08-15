@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import time
 from bisect import bisect_left, bisect_right
 
 from textual.app import ComposeResult
@@ -48,6 +49,7 @@ class ReaderScreen(Screen):
         self.renderer: BookRenderer | None = None
         self.page_index = 0
         self.width_mode = 0
+        self._highlight_until = 0.0
 
     def compose(self) -> ComposeResult:
         yield Static(id="chapter")
@@ -61,13 +63,25 @@ class ReaderScreen(Screen):
         self.book = self.app.get_book(self.book_id)
         self.set_interval(1.0, self._timer_tick)
         self._rebuild_renderer()
+        resumed = self.jump_to is not None
         if self.jump_to is not None:
             self.page_index = self.renderer.locate(*self.jump_to)
         else:
             row = self.db.get_progress(self.book_id)
             if row is not None:
+                resumed = True
                 self.page_index = self.renderer.locate(row["chapter"], row["paragraph"])
         self._draw()
+        if resumed:
+            self._highlight_until = time.monotonic() + 1.5
+            self.set_timer(1.5, self._clear_highlight)
+
+    def _clear_highlight(self) -> None:
+        self._highlight_until = 0.0
+        self._draw()
+
+    def _highlighted(self) -> bool:
+        return time.monotonic() < self._highlight_until
 
     def _rebuild_renderer(self) -> None:
         assert self.book is not None
@@ -82,13 +96,18 @@ class ReaderScreen(Screen):
         self.renderer = BookRenderer(self.book, width=width, height=height)
         self.page_index = self.renderer.locate(current.chapter_index, current.paragraph_index)
 
-    def _draw(self) -> None:
+    def _draw(self, highlight: bool | None = None) -> None:
         assert self.book is not None and self.renderer is not None
         page = self.renderer.render(self.page_index)
         _acc, bright, _bg, _dim = self.app.accent_colors()
         title = self.book.chapters[page.chapter_index].title or "…"
         self.query_one("#chapter", Static).update(f"[bold]{bright}─── {title} ───[/bold]")
-        self.query_one("#content", Static).update("\n".join(page.lines) if page.lines else "…")
+        lines = page.lines if page.lines else ["…"]
+        if (highlight if highlight is not None else self._highlighted()) and lines:
+            from rich.markup import escape
+
+            lines = [f"[reverse]{escape(lines[0])}[/reverse]"] + lines[1:]
+        self.query_one("#content", Static).update("\n".join(lines))
         self._refresh_status(page)
         self._save_progress(page.chapter_index, page.paragraph_index)
 
