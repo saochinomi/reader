@@ -102,9 +102,33 @@ DataTable {
     padding: 0 1;
 }
 
-Horizontal#table_row {
+Horizontal#library_row {
     height: 1fr;
-    align-horizontal: center;
+}
+
+DataTable#books {
+    width: 30%;
+}
+
+Static#last_book {
+    width: 40%;
+    height: auto;
+    background: #0a0a0a;
+    color: $text;
+    padding: 1 2;
+}
+
+Static#last_book .lb-title {
+    text-style: bold;
+    color: $text;
+}
+
+Static#last_book .lb-accent {
+    color: $accent;
+}
+
+Static#last_book .lb-muted {
+    color: $text-muted;
 }
 
 Horizontal#search_row {

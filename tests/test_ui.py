@@ -277,12 +277,21 @@ class TestUi:
             async with app.run_test(size=(100, 40)) as pilot:
                 lib = app.screen
                 table = lib.query_one("#books")
-                assert table.styles.width.value == 98
+                assert table.styles.width.value == 30
+                card = lib.query_one("#last_book")
+                assert card.styles.width.value == 40
+                assert card.display
+                assert "Нет недавних книг" in card.content  # type: ignore
                 search = lib.query_one("#search")
-                assert search.styles.width.value == 98
                 assert search.parent.id == "search_row"
 
                 book_id = import_book(app.db, book)
+                app.db.save_progress(book_id, 0, 1, 1)
+                lib._refresh_table()
+                await pilot.pause()
+                assert "Тестовая книга" in card.content  # type: ignore
+                assert "прочитано" in card.content  # type: ignore
+
                 app.push_screen(ReaderScreen(app.db, book_id))
                 await pilot.pause()
                 reader = app.screen
@@ -291,6 +300,52 @@ class TestUi:
                 assert reader.query_one("#content_row") is not None
                 chapter = reader.query_one("#chapter")
                 assert "───" in chapter.content
+
+        asyncio.run(scenario())
+
+    def test_narrow_window_hides_last_book_card(self, tmp_path: Path):
+        _home(tmp_path)
+
+        async def scenario():
+            app = ReaderApp(tmp_path / "lib.db")
+            async with app.run_test(size=(80, 40)) as pilot:
+                lib = app.screen
+                card = lib.query_one("#last_book")
+                assert not card.display
+                table = lib.query_one("#books")
+                assert table.styles.width.value == 78
+
+        asyncio.run(scenario())
+
+    def test_open_last_book(self, tmp_path: Path):
+        _home(tmp_path)
+        b1 = tmp_path / "a.fb2"
+        b2 = tmp_path / "b.epub"
+        write_fixture(b1, build_fb2())
+        write_fixture(b2, build_epub())
+
+        async def scenario():
+            from reader.library import import_book
+
+            app = ReaderApp(tmp_path / "lib.db")
+            async with app.run_test(size=(100, 40)) as pilot:
+                id1 = import_book(app.db, b1)
+                id2 = import_book(app.db, b2)
+                app.db.save_progress(id1, 0, 1, 1)
+                app.db.save_progress(id2, 2, 3, 0)
+                app.db._conn.execute("UPDATE books SET last_opened = ? WHERE id = ?", (1000, id1))
+                app.db._conn.execute("UPDATE books SET last_opened = ? WHERE id = ?", (2000, id2))
+                app.db._conn.commit()
+                lib = app.screen
+                lib._refresh_table()
+                await pilot.pause()
+                card = lib.query_one("#last_book")
+                assert "b.epub" in card.content or "Тестовая" in card.content  # type: ignore
+                await pilot.press("g")
+                await pilot.pause()
+                assert isinstance(app.screen, ReaderScreen)
+                assert app.screen.book_id == id2
+                assert app.screen.page_index >= 0
 
         asyncio.run(scenario())
 

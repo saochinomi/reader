@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 
 from textual import on, work
+from textual import events
 from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal
@@ -39,6 +40,7 @@ class LibraryScreen(Screen):
         Binding("t", "show_timer", "Таймер"),
         Binding("S", "show_shelves", "Полки"),
         Binding("p", "put_on_shelf", "На полку"),
+        Binding("g", "open_last_book", "Последняя"),
         Binding("?", "show_help", "Помощь"),
         Binding("q", "quit_app", "Выход"),
     ]
@@ -61,8 +63,9 @@ class LibraryScreen(Screen):
     def compose(self) -> ComposeResult:
         yield Static(banner(), id="banner")
         yield TabBar(on_open=self._open_from_tab, on_add=self.action_add_book)
-        with Horizontal(id="table_row"):
+        with Horizontal(id="library_row"):
             yield DataTable(id="books")
+            yield Static(id="last_book")
         with Horizontal(id="search_row"):
             yield Input(placeholder="Поиск по названию, автору, описанию…", id="search")
         yield StatusBar(id="statusbar")
@@ -72,7 +75,7 @@ class LibraryScreen(Screen):
         table = self.query_one("#books", DataTable)
         table.cursor_type = "row"
         table.zebra_stripes = True
-        table.add_columns("Название", "Закладки", "Версия", "Формат", "Прогресс")
+        table.add_columns("Название", "Формат", "Прогресс")
         self._resize_center()
         self._refresh_table()
         self._update_tabs()
@@ -87,9 +90,19 @@ class LibraryScreen(Screen):
         self._resize_center()
 
     def _resize_center(self) -> None:
-        width = max(40, min(self._MAX_TABLE_WIDTH, self.size.width - 2))
-        self.query_one("#books", DataTable).styles.width = width
-        self.query_one("#search", Input).styles.width = width
+        table = self.query_one("#books", DataTable)
+        card = self.query_one("#last_book", Static)
+        width = self.size.width
+        if width < 100:
+            card.display = False
+            table.styles.width = max(40, min(self._MAX_TABLE_WIDTH, width - 2))
+        else:
+            card.display = True
+            table_w = max(30, int(width * 0.30))
+            card_w = max(30, int(width * 0.40))
+            table.styles.width = table_w
+            card.styles.width = card_w
+            card.styles.margin_right = max(0, width - table_w - card_w)
 
     def on_screen_resume(self, event) -> None:
         if self._current_shelf_id is not None:
@@ -132,14 +145,11 @@ class LibraryScreen(Screen):
         self._rows.clear()
         selected = self._selected_id
         selected_row = 0
-        summary = self.db.bookmarks_summary()
         for i, row in enumerate(self._sorted(self.query_one("#search", Input).value)):
             key = str(row["id"])
             self._rows[key] = row
             table.add_row(
                 row["title"],
-                self._bookmarks_text(summary, row["id"]),
-                row["year"] or "—",
                 row["format"].upper(),
                 self._progress_text(row),
                 key=key,
@@ -149,15 +159,39 @@ class LibraryScreen(Screen):
         if self._rows:
             table.move_cursor(row=selected_row)
         self._refresh_status()
+        self._refresh_last_book()
 
-    @staticmethod
-    def _bookmarks_text(summary: dict, book_id: int) -> str:
-        count, note = summary.get(book_id, (0, ""))
-        if not count:
-            return "—"
-        if note:
-            return f"⚑ {count} · {note[:34]}"
-        return f"⚑ {count}"
+    def _refresh_last_book(self) -> None:
+        accent, bright, _bg, _dim = self.app.accent_colors()
+        recent = self.db.recent_books(1)
+        if not recent:
+            self.query_one("#last_book", Static).update(
+                "\n\n".join(
+                    [
+                        f"[bold]{bright}─── Последняя книга ───[/bold]",
+                        "[#5c5c5c]Нет недавних книг[/]",
+                        f"[{accent}]i — добавить книгу[/]",
+                    ]
+                )
+            )
+            return
+        row = recent[0]
+        authors = (row["authors"] or "").strip()
+        progress = self.db.get_progress(int(row["id"]))
+        chapter = progress["chapter"] if progress else 0
+        paragraph = progress["paragraph"] if progress else 0
+        total = sum(c["n"] for c in json.loads(row["chapters"]))
+        pct = "—"
+        if total:
+            done = sum(c["n"] for c in json.loads(row["chapters"])[:chapter]) + paragraph
+            pct = f"{round(done * 100 / total)}%"
+        parts = [f"[bold]{bright}─── Последняя книга ───[/bold]", ""]
+        parts.append(f"[bold]{row['title']}[/bold]")
+        if authors:
+            parts.append(f"[#5c5c5c]{authors}[/]")
+        parts.append(f"[#5c5c5c]{row['format'].upper()} · {pct} прочитано[/]")
+        parts.append(f"[{accent}]g — продолжить чтение[/]")
+        self.query_one("#last_book", Static).update("\n".join(parts))
 
     def _timer_tick(self) -> None:
         self.app.timer_tick()
@@ -365,6 +399,25 @@ class LibraryScreen(Screen):
     def action_show_all_bookmarks(self) -> None:
         self.app.push_screen(AllBookmarksScreen(), self._on_all_bookmark)
 
+    def action_open_last_book(self) -> None:
+        recent = self.db.recent_books(1)
+        if not recent:
+            self.app.notify("Нет недавних книг", severity="warning")
+            return
+        book_id = int(recent[0]["id"])
+        self._selected_id = book_id
+        try:
+            self.app.get_book(book_id)
+        except Exception as e:  # noqa: BLE001
+            self.app.notify(f"Не удалось открыть: {e}", severity="error")
+            return
+        self._update_tabs(active=book_id)
+        progress = self.db.get_progress(book_id)
+        jump_to = (
+            (progress["chapter"], progress["paragraph"]) if progress else None
+        )
+        self.app.push_screen(ReaderScreen(self.db, book_id, jump_to=jump_to))
+
     def _on_all_bookmark(self, result: tuple[int, int, int] | None) -> None:
         if result is None:
             return
@@ -391,6 +444,10 @@ class LibraryScreen(Screen):
         if row:
             self._selected_id = int(row["id"])
         await self.action_open_book()
+
+    @on(events.Click, "#last_book")
+    def _on_last_book_clicked(self) -> None:
+        self.action_open_last_book()
 
     # --- сканирование ~/Books ---
 
