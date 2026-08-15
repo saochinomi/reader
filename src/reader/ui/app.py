@@ -12,6 +12,7 @@ from ..models import ParsedBook
 from . import theme
 from .library_screen import LibraryScreen
 from .reader_screen import ReaderScreen
+from .splash_screen import SplashScreen
 
 CONFIG_DIR = Path.home() / ".config" / "reader"
 CONFIG_FILE = CONFIG_DIR / "config.json"
@@ -96,6 +97,14 @@ Input {
     color: #d0d0d0;
 }
 
+Horizontal#main_row {
+    height: 1fr;
+}
+
+Vertical#main_column {
+    height: 1fr;
+}
+
 DataTable {
     background: #0a0a0a;
     color: $text;
@@ -121,8 +130,12 @@ Horizontal#table_row {
 }
 
 Horizontal#search_row {
-    height: 3;
+    height: 2;
     align-horizontal: center;
+}
+
+Horizontal#search_row Input {
+    height: 2;
 }
 
 DataTable > .datatable--header {
@@ -225,11 +238,12 @@ class ReaderApp(App):
     SUB_TITLE = ""
     CSS = CSS
 
-    def __init__(self, db_path: Path, open_path: Path | None = None):
+    def __init__(self, db_path: Path, open_path: Path | None = None, splash: bool = True):
         super().__init__()
         self.db_path = db_path
         self.db = LibraryDB(db_path)
         self.open_path = open_path
+        self._splash = splash
         self._books_cache: dict[int, ParsedBook] = {}
         self._accent_name = self._load_accent()
         self._timer_minutes = self._load_timer_minutes()
@@ -378,6 +392,8 @@ class ReaderApp(App):
                     f"Не удалось открыть «{self.open_path.name}»: {e}",
                     severity="error",
                 )
+        if self._splash:
+            self.push_screen(SplashScreen())
 
     def get_book(self, book_id: int) -> ParsedBook:
         if book_id not in self._books_cache:

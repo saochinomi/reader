@@ -7,7 +7,7 @@ from textual import on, work
 from textual import events
 from textual.app import ComposeResult
 from textual.binding import Binding
-from textual.containers import Horizontal
+from textual.containers import Horizontal, Vertical
 from textual.screen import Screen
 from textual.widgets import DataTable, Input, Static
 
@@ -61,16 +61,18 @@ class LibraryScreen(Screen):
         self._current_shelf_name: str = ""
 
     def compose(self) -> ComposeResult:
-        yield Static(banner(), id="banner")
-        with Horizontal(id="last_row"):
-            yield Static(id="last_book")
-        yield TabBar(on_open=self._open_from_tab, on_add=self.action_add_book)
-        with Horizontal(id="table_row"):
-            yield DataTable(id="books")
-        with Horizontal(id="search_row"):
-            yield Input(placeholder="Поиск по названию, автору, описанию…", id="search")
+        with Horizontal(id="main_row"):
+            yield KeyBar(id="keybar")
+            with Vertical(id="main_column"):
+                yield Static(banner(), id="banner")
+                with Horizontal(id="last_row"):
+                    yield Static(id="last_book")
+                yield TabBar(on_open=self._open_from_tab, on_add=self.action_add_book)
+                with Horizontal(id="table_row"):
+                    yield DataTable(id="books")
+                with Horizontal(id="search_row"):
+                    yield Input(placeholder="Поиск по названию, автору, описанию…", id="search")
         yield StatusBar(id="statusbar")
-        yield KeyBar(id="keybar")
 
     def on_mount(self) -> None:
         table = self.query_one("#books", DataTable)
@@ -91,7 +93,8 @@ class LibraryScreen(Screen):
         self._resize_center()
 
     def _resize_center(self) -> None:
-        width = max(40, min(self._MAX_TABLE_WIDTH, self.size.width - 2))
+        keys_w = self.query_one("#keybar").size.width or KeyBar.WIDTH
+        width = max(40, min(self._MAX_TABLE_WIDTH, self.size.width - keys_w - 2))
         self.query_one("#books", DataTable).styles.width = width
         self.query_one("#last_book", Static).styles.width = width
         self.query_one("#search", Input).styles.width = width

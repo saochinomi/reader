@@ -1,41 +1,37 @@
 from __future__ import annotations
 
+from rich.markup import escape
 from textual.widgets import Static
 
-_SEP = "  "
-
-
 class KeyBar(Static):
-    """Панель горячих клавиш по центру: иконка + клавиша + подпись."""
+    """Вертикальная панель клавиш слева: иконка + клавиша, без подписей."""
+
+    WIDTH = 8
 
     DEFAULT_CSS = """
     KeyBar {
-        height: 1;
-        background: #0d0d0d;
-        text-align: center;
-        padding: 0 1;
+        height: 1fr;
+        width: auto;
+        background: #0a0a0a;
+        color: #8a8a8a;
+        padding: 1 1 1 2;
     }
     """
 
-    @staticmethod
-    def _seg(accent: str, bright: str, icon: str, key: str, label: str) -> str:
-        return (
-            f"[{accent}]{icon}[/] [{bright}]{key}[/] "
-            f"[#5c5c5c]{label}[/]"
-        )
-
     def set_keys(self, items: list[tuple[str, str, str]]) -> None:
-        """items: список (иконка, клавиша, подпись)."""
+        """items: список (иконка, клавиша, подпись) — подписи не рисуются."""
         accent, bright, _bg, _dim = self.app.accent_colors()
-        self.update(
-            _SEP.join(self._seg(accent, bright, *item) for item in items)
-        )
+        lines = [
+            f"[{accent}]{escape(icon)}[/] [{bright}]{escape(key)}[/]"
+            for icon, key, _label in items
+        ]
+        self.update("\n".join(lines))
 
     @staticmethod
     def library() -> list[tuple[str, str, str]]:
         return [
             ("+", "i", "добавить"),
-            ("⏎", "Enter", "открыть"),
+            ("⏎", "↵", "открыть"),
             ("⏵", "g", "последняя"),
             ("⌕", "/", "поиск"),
             ("⇅", "s", "сортировка"),
@@ -44,7 +40,7 @@ class KeyBar(Static):
             ("⚑", "B", "закладки"),
             ("▤", "S", "полки"),
             ("▦", "p", "на полку"),
-            ("⏭", "Tab", "вкладки"),
+            ("⏭", "⇥", "вкладки"),
             ("◎", "c", "цвет"),
             ("⏳", "t", "таймер"),
             ("?", "?", "помощь"),
@@ -58,11 +54,11 @@ class KeyBar(Static):
             ("⏭", "n", "глава"),
             ("⏮", "p", "глава"),
             ("⚑", "s", "закладка"),
-            ("«»", "[ ]", "закл."),
+            ("«»", "[]", "закл."),
             ("☰", "b", "список"),
             ("⇔", "f", "ширина"),
             ("◎", "c", "цвет"),
             ("⏳", "t", "таймер"),
             ("?", "?", "помощь"),
-            ("⏴", "Esc", "назад"),
+            ("⏴", "⎋", "назад"),
         ]

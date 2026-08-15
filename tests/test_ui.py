@@ -42,7 +42,7 @@ class TestUi:
         write_fixture(book, build_fb2())
 
         async def scenario():
-            app = ReaderApp(tmp_path / "lib.db")
+            app = ReaderApp(tmp_path / "lib.db", splash=False)
             async with app.run_test(size=(100, 40)) as pilot:
                 lib = app.screen
                 assert isinstance(lib, LibraryScreen)
@@ -86,11 +86,11 @@ class TestUi:
         write_fixture(book, build_epub())
 
         async def scenario():
-            app = ReaderApp(tmp_path / "lib.db", open_path=book)
+            app = ReaderApp(tmp_path / "lib.db", open_path=book, splash=False)
             async with app.run_test(size=(100, 40)) as pilot:
                 assert isinstance(app.screen, ReaderScreen)
                 keybar = app.screen.query_one("#keybar", KeyBar)
-                assert "закладка" in keybar.content and "ширина" in keybar.content
+                assert "⚑" in keybar.content and "⇔" in keybar.content
                 await pilot.press("j")
                 await pilot.pause()
                 await pilot.press("escape")
@@ -108,7 +108,7 @@ class TestUi:
         async def scenario():
             from reader.library import import_book
 
-            app = ReaderApp(tmp_path / "lib.db")
+            app = ReaderApp(tmp_path / "lib.db", splash=False)
             async with app.run_test(size=(100, 40)) as pilot:
                 lib = app.screen
                 banner = lib.query_one("#banner", Static)
@@ -137,7 +137,7 @@ class TestUi:
                 assert any(b.id and b.id.startswith("tab-") for b in tabs.query(Button))
 
                 keybar = lib.query_one("#keybar", KeyBar)
-                assert "добавить" in keybar.content and "сортировка" in keybar.content
+                assert "+" in keybar.content and "⇅" in keybar.content
                 status_center = "книг: 1" in status.content
 
         asyncio.run(scenario())
@@ -148,7 +148,7 @@ class TestUi:
         write_fixture(book, build_fb2())
 
         async def scenario():
-            app = ReaderApp(tmp_path / "lib.db")
+            app = ReaderApp(tmp_path / "lib.db", splash=False)
             async with app.run_test(size=(100, 40)) as pilot:
                 lib = app.screen
                 assert app.theme == "reader-green"
@@ -213,7 +213,7 @@ class TestUi:
         async def scenario():
             from reader.library import import_book
 
-            app = ReaderApp(tmp_path / "lib.db")
+            app = ReaderApp(tmp_path / "lib.db", splash=False)
             async with app.run_test(size=(100, 40)) as pilot:
                 book_id = import_book(app.db, book)
                 app.push_screen(ReaderScreen(app.db, book_id))
@@ -245,7 +245,7 @@ class TestUi:
             from reader.library import import_book
             from reader.ui.all_bookmarks_screen import AllBookmarksScreen
 
-            app = ReaderApp(tmp_path / "lib.db")
+            app = ReaderApp(tmp_path / "lib.db", splash=False)
             async with app.run_test(size=(100, 40)) as pilot:
                 id1 = import_book(app.db, b1)
                 id2 = import_book(app.db, b2)
@@ -273,13 +273,15 @@ class TestUi:
         async def scenario():
             from reader.library import import_book
 
-            app = ReaderApp(tmp_path / "lib.db")
+            app = ReaderApp(tmp_path / "lib.db", splash=False)
             async with app.run_test(size=(100, 40)) as pilot:
                 lib = app.screen
                 table = lib.query_one("#books")
-                assert table.styles.width.value == 98
+                keys_w = lib.query_one("#keybar").size.width
+                assert keys_w > 0
+                assert table.styles.width.value == 100 - keys_w - 2
                 card = lib.query_one("#last_book")
-                assert card.styles.width.value == 98
+                assert card.styles.width.value == 100 - keys_w - 2
                 assert card.display
                 assert card.parent.id == "last_row"
                 assert card.styles.text_align == "center"
@@ -289,8 +291,12 @@ class TestUi:
                 children = list(lib.query("*"))
                 assert children.index(card) < children.index(tab_bar)
                 search = lib.query_one("#search")
-                assert search.styles.width.value == 98
+                assert search.styles.width.value == 100 - keys_w - 2
                 assert search.parent.id == "search_row"
+                assert lib.query_one("#keybar").parent.id == "main_row"
+                assert table.parent.id == "table_row"
+                assert tab_bar.parent.id == "main_column"
+                assert lib.query_one("#main_row").children[0].id == "keybar"
 
                 book_id = import_book(app.db, book)
                 app.db.save_progress(book_id, 0, 1, 1)
@@ -314,14 +320,60 @@ class TestUi:
         _home(tmp_path)
 
         async def scenario():
-            app = ReaderApp(tmp_path / "lib.db")
+            app = ReaderApp(tmp_path / "lib.db", splash=False)
             async with app.run_test(size=(80, 40)) as pilot:
                 lib = app.screen
                 card = lib.query_one("#last_book")
                 assert card.display
+                keys_w = lib.query_one("#keybar").size.width
                 table = lib.query_one("#books")
-                assert table.styles.width.value == 78
-                assert card.styles.width.value == 78
+                assert table.styles.width.value == 80 - keys_w - 2
+                assert card.styles.width.value == 80 - keys_w - 2
+
+        asyncio.run(scenario())
+
+    def test_splash_screen(self, tmp_path: Path):
+        _home(tmp_path)
+
+        async def scenario():
+            app = ReaderApp(tmp_path / "lib.db", splash=True)
+            async with app.run_test(size=(100, 40)) as pilot:
+                from reader.ui.splash_screen import SplashScreen
+
+                assert isinstance(app.screen, SplashScreen)
+                logo = app.screen.query_one("#splash_logo")
+                assert "██████╗" in logo.content  # type: ignore
+                hint = app.screen.query_one("#splash_hint")
+                assert "Enter" in hint.content  # type: ignore
+                await pilot.press("enter")
+                await pilot.pause()
+                assert isinstance(app.screen, LibraryScreen)
+
+        asyncio.run(scenario())
+
+    def test_vertical_keybar_layout(self, tmp_path: Path):
+        _home(tmp_path)
+
+        async def scenario():
+            app = ReaderApp(tmp_path / "lib.db", splash=False)
+            async with app.run_test(size=(100, 40)) as pilot:
+                lib = app.screen
+                main_row = lib.query_one("#main_row")
+                assert main_row.children[0].id == "keybar"
+                keybar = lib.query_one("#keybar", KeyBar)
+                assert "\n" in keybar.content  # type: ignore
+                assert "↵" in keybar.content and "⎋" not in keybar.content  # type: ignore
+                assert "закладка" not in keybar.content  # type: ignore
+
+                book = tmp_path / "book.fb2"
+                write_fixture(book, build_fb2())
+                from reader.library import import_book
+
+                app.push_screen(ReaderScreen(app.db, import_book(app.db, book)))
+                await pilot.pause()
+                reader = app.screen
+                assert reader.query_one("#main_row").children[0].id == "keybar"
+                assert "⎋" in reader.query_one("#keybar", KeyBar).content  # type: ignore
 
         asyncio.run(scenario())
 
@@ -335,7 +387,7 @@ class TestUi:
         async def scenario():
             from reader.library import import_book
 
-            app = ReaderApp(tmp_path / "lib.db")
+            app = ReaderApp(tmp_path / "lib.db", splash=False)
             async with app.run_test(size=(100, 40)) as pilot:
                 id1 = import_book(app.db, b1)
                 import_book(app.db, b2)
@@ -358,7 +410,7 @@ class TestUi:
         async def scenario():
             from reader.library import import_book
 
-            app = ReaderApp(tmp_path / "lib.db")
+            app = ReaderApp(tmp_path / "lib.db", splash=False)
             async with app.run_test(size=(100, 40)) as pilot:
                 book_id = import_book(app.db, book)
                 app.db.save_progress(book_id, 1, 1, 1)
@@ -380,7 +432,7 @@ class TestUi:
         async def scenario():
             from reader.library import import_book
 
-            app = ReaderApp(tmp_path / "lib.db")
+            app = ReaderApp(tmp_path / "lib.db", splash=False)
             async with app.run_test(size=(100, 40)) as pilot:
                 book_id = import_book(app.db, book)
                 app.push_screen(ReaderScreen(app.db, book_id))
@@ -401,7 +453,7 @@ class TestUi:
         async def scenario():
             from reader.library import import_book
 
-            app = ReaderApp(tmp_path / "lib.db")
+            app = ReaderApp(tmp_path / "lib.db", splash=False)
             async with app.run_test(size=(100, 40)) as pilot:
                 id1 = import_book(app.db, b1)
                 id2 = import_book(app.db, b2)
@@ -429,7 +481,7 @@ class TestUi:
         write_fixture(book, build_fb2())
 
         async def scenario():
-            app = ReaderApp(tmp_path / "lib.db")
+            app = ReaderApp(tmp_path / "lib.db", splash=False)
             async with app.run_test(size=(100, 40)) as pilot:
                 lib = app.screen
                 assert app.timer_minutes() == 30
@@ -470,7 +522,7 @@ class TestUi:
         write_fixture(book, build_fb2())
 
         async def scenario():
-            app = ReaderApp(tmp_path / "lib.db")
+            app = ReaderApp(tmp_path / "lib.db", splash=False)
             async with app.run_test(size=(100, 40)) as pilot:
                 lib = app.screen
                 shelf_id = app.db.create_shelf("Мануалы")
@@ -511,7 +563,7 @@ class TestUi:
         write_fixture(book, build_fb2())
 
         async def scenario():
-            app = ReaderApp(tmp_path / "lib.db")
+            app = ReaderApp(tmp_path / "lib.db", splash=False)
             async with app.run_test(size=(100, 40)) as pilot:
                 from reader.library import import_book
 
@@ -544,7 +596,7 @@ class TestUi:
         write_fixture(b3, build_txt())
 
         async def scenario():
-            app = ReaderApp(tmp_path / "lib.db")
+            app = ReaderApp(tmp_path / "lib.db", splash=False)
             async with app.run_test(size=(100, 40)) as pilot:
                 from reader.library import import_book
 

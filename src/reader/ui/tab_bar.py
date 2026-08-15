@@ -12,38 +12,38 @@ class TabBar(Horizontal):
 
     DEFAULT_CSS = """
     TabBar {
-        height: 3;
+        height: 2;
         padding: 0 1;
         align-vertical: middle;
         align-horizontal: center;
     }
 
     TabBar Button {
-        height: 3;
+        height: 2;
         padding: 0 1;
-        border: round #2a2a2a;
-        background: #101010;
-        color: #8a8a8a;
+        border: none;
+        background: transparent;
+        color: #6a6a6a;
         margin: 0 0 0 1;
-        min-width: 12;
+        min-width: 10;
         content-align: left middle;
     }
 
     TabBar Button.-active-tab {
-        border: round $primary;
         background: $accent-dim;
         color: $accent;
         text-style: bold;
     }
 
     TabBar Button.-plus {
-        min-width: 3;
-        max-width: 3;
-        border: round #2a2a2a;
-        background: #101010;
-        color: #8a8a8a;
+        min-width: 2;
+        max-width: 2;
+        border: none;
+        background: transparent;
+        color: #6a6a6a;
         content-align: center middle;
         padding: 0;
+        margin: 0 0 0 1;
     }
 
     TabBar Static {
