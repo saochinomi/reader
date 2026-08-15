@@ -19,6 +19,7 @@ from .file_picker_screen import FilePickerScreen
 from .help_screen import HelpScreen
 from .key_bar import KeyBar
 from .reader_screen import ReaderScreen
+from .shelf_screen import ShelfScreen
 from .status_bar import StatusBar
 from .tab_bar import TabBar
 from .timer_screen import TimerScreen
@@ -36,6 +37,8 @@ class LibraryScreen(Screen):
         Binding("s", "cycle_sort", "Сортировка"),
         Binding("c", "choose_color", "Цвет"),
         Binding("t", "show_timer", "Таймер"),
+        Binding("S", "show_shelves", "Полки"),
+        Binding("p", "put_on_shelf", "На полку"),
         Binding("?", "show_help", "Помощь"),
         Binding("q", "quit_app", "Выход"),
     ]
@@ -52,6 +55,8 @@ class LibraryScreen(Screen):
         self._selected_id: int | None = None
         self._pending_delete_id: int | None = None
         self._tabs: list[tuple[int, str]] = []
+        self._current_shelf_id: int | None = None
+        self._current_shelf_name: str = ""
 
     def compose(self) -> ComposeResult:
         yield Static(banner(), id="banner")
@@ -87,12 +92,31 @@ class LibraryScreen(Screen):
         self.query_one("#search", Input).styles.width = width
 
     def on_screen_resume(self, event) -> None:
+        if self._current_shelf_id is not None:
+            shelf = next(
+                (r for r in self.db.all_shelves() if r["id"] == self._current_shelf_id), None
+            )
+            if shelf is None:
+                self._current_shelf_id = None
+                self._current_shelf_name = ""
         self._refresh_table()
         self._update_tabs()
         self.query_one("#keybar", KeyBar).set_keys(KeyBar.library())
 
     def _sorted(self, query: str = "") -> list:
-        rows = self.db.search_books(query) if query else self.db.all_books()
+        if self._current_shelf_id is not None:
+            rows = self.db.shelf_books(self._current_shelf_id)
+            if query:
+                like = query.casefold()
+                rows = [
+                    r
+                    for r in rows
+                    if like in r["title"].casefold()
+                    or like in (r["authors"] or "").casefold()
+                    or like in r["description"].casefold()
+                ]
+        else:
+            rows = self.db.search_books(query) if query else self.db.all_books()
         key = self.sort_key
         if key == "author":
             rows = sorted(rows, key=lambda r: (r["authors"], r["title"].lower()))
@@ -123,11 +147,7 @@ class LibraryScreen(Screen):
                 selected_row = i
         if self._rows:
             table.move_cursor(row=selected_row)
-        query = self.query_one("#search", Input).value.strip()
-        sort_label = dict(self.SORT_KEYS)[self.sort_key]
-        self.query_one("#statusbar", StatusBar).browse(
-            len(self._rows), sort_label=sort_label, query=query, timer=self.app.timer_text()
-        )
+        self._refresh_status()
 
     def _timer_tick(self) -> None:
         self.app.timer_tick()
@@ -137,7 +157,11 @@ class LibraryScreen(Screen):
         query = self.query_one("#search", Input).value.strip()
         sort_label = dict(self.SORT_KEYS)[self.sort_key]
         self.query_one("#statusbar", StatusBar).browse(
-            len(self._rows), sort_label=sort_label, query=query, timer=self.app.timer_text()
+            len(self._rows),
+            sort_label=sort_label,
+            query=query,
+            timer=self.app.timer_text(),
+            shelf=self._current_shelf_name,
         )
 
     @staticmethod
@@ -221,6 +245,11 @@ class LibraryScreen(Screen):
         if book_id is None:
             return
         row = self.db.get_book(book_id)
+        if self._current_shelf_id is not None:
+            self.db.remove_book_from_shelf(self._current_shelf_id, book_id)
+            self.app.notify(f"Снято с полки «{self._current_shelf_name}»", severity="information")
+            self._refresh_table()
+            return
         self._pending_delete_id = book_id
         self.app.push_screen(
             ConfirmScreen(f"Удалить «{row['title']}» из библиотеки?"),
@@ -287,6 +316,41 @@ class LibraryScreen(Screen):
 
     def action_show_timer(self) -> None:
         self.app.push_screen(TimerScreen())
+
+    def action_show_shelves(self) -> None:
+        self.app.push_screen(ShelfScreen(pick=False), self._on_shelf_picked)
+
+    def _on_shelf_picked(self, shelf_id: int | None) -> None:
+        if shelf_id is None:
+            return
+        if shelf_id == 0:
+            self._current_shelf_id = None
+            self._current_shelf_name = ""
+        else:
+            self._current_shelf_id = shelf_id
+            shelf = next(
+                (r for r in self.db.all_shelves() if r["id"] == shelf_id), None
+            )
+            self._current_shelf_name = shelf["name"] if shelf else ""
+            if self._current_shelf_name:
+                self.app.notify(f"Полка «{self._current_shelf_name}»", severity="information")
+        self._refresh_table()
+
+    def action_put_on_shelf(self) -> None:
+        book_id = self._current_book_id()
+        if book_id is None:
+            return
+        self.app.push_screen(ShelfScreen(pick=True), lambda shelf_id: self._on_put_on_shelf(book_id, shelf_id))
+
+    def _on_put_on_shelf(self, book_id: int, shelf_id: int | None) -> None:
+        if shelf_id is None or shelf_id == 0:
+            return
+        shelf = next((r for r in self.db.all_shelves() if r["id"] == shelf_id), None)
+        name = shelf["name"] if shelf else ""
+        if self.db.add_book_to_shelf(shelf_id, book_id):
+            self.app.notify(f"Книга на полке «{name}»", severity="information")
+        else:
+            self.app.notify(f"Книга уже на полке «{name}»", severity="warning")
 
     def action_show_all_bookmarks(self) -> None:
         self.app.push_screen(AllBookmarksScreen(), self._on_all_bookmark)

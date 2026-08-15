@@ -20,9 +20,19 @@ class StatusBar(Static):
     def _mode(mode: str, bright: str) -> str:
         return f"[{bright}]{mode}[/]"
 
-    def browse(self, count: int, *, sort_label: str = "", query: str = "", timer: str = "") -> None:
+    def browse(
+        self,
+        count: int,
+        *,
+        sort_label: str = "",
+        query: str = "",
+        timer: str = "",
+        shelf: str = "",
+    ) -> None:
         _acc, bright, _bg, _dim = self.app.accent_colors()
         parts = [self._mode("BROWSE", bright), f"[#c8c8c8]книг: {count}[/]"]
+        if shelf:
+            parts.append(f"[#8a8a8a]полка: {shelf}[/]")
         if sort_label:
             parts.append(f"[#8a8a8a]по {sort_label}[/]")
         if query:

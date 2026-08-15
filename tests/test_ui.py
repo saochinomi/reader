@@ -335,6 +335,47 @@ class TestUi:
 
         asyncio.run(scenario())
 
+    def test_shelves(self, tmp_path: Path):
+        _home(tmp_path)
+        book = tmp_path / "book.fb2"
+        write_fixture(book, build_fb2())
+
+        async def scenario():
+            app = ReaderApp(tmp_path / "lib.db")
+            async with app.run_test(size=(100, 40)) as pilot:
+                lib = app.screen
+                shelf_id = app.db.create_shelf("Мануалы")
+                from reader.library import import_book
+
+                book_id = import_book(app.db, book)
+
+                await pilot.press("S")
+                await pilot.pause()
+                assert app.screen.__class__.__name__ == "ShelfScreen"
+                await pilot.press("escape")
+                await pilot.pause()
+
+                app.db.add_book_to_shelf(shelf_id, book_id)
+                app.push_screen(
+                    __import__("reader.ui.shelf_screen", fromlist=["ShelfScreen"]).ShelfScreen(
+                        pick=False
+                    ),
+                    lib._on_shelf_picked,
+                )
+                await pilot.pause()
+                lib._on_shelf_picked(shelf_id)
+                await pilot.pause()
+                assert lib._current_shelf_id == shelf_id
+                assert len(lib._rows) == 1
+                assert "полка: Мануалы" in lib.query_one("#statusbar", StatusBar).content
+
+                lib._on_shelf_picked(0)
+                await pilot.pause()
+                assert lib._current_shelf_id is None
+                assert len(lib._rows) == 1
+
+        asyncio.run(scenario())
+
     def test_search_cyrillic(self, tmp_path: Path):
         _home(tmp_path)
         b1 = tmp_path / "a.fb2"

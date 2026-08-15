@@ -51,7 +51,18 @@ class LibraryDB:
                 blob BLOB NOT NULL,
                 saved_at INTEGER NOT NULL DEFAULT (unixepoch())
             );
+            CREATE TABLE IF NOT EXISTS shelves (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT UNIQUE NOT NULL,
+                created_at INTEGER NOT NULL DEFAULT (unixepoch())
+            );
+            CREATE TABLE IF NOT EXISTS shelf_books (
+                shelf_id INTEGER NOT NULL REFERENCES shelves(id) ON DELETE CASCADE,
+                book_id INTEGER NOT NULL REFERENCES books(id) ON DELETE CASCADE,
+                PRIMARY KEY (shelf_id, book_id)
+            );
             CREATE INDEX IF NOT EXISTS idx_bookmarks_book ON bookmarks(book_id);
+            CREATE INDEX IF NOT EXISTS idx_shelf_books_shelf ON shelf_books(shelf_id);
             """
         )
         self._conn.commit()
@@ -207,3 +218,59 @@ class LibraryDB:
             or like in (r["authors"] or "").casefold()
             or like in r["description"].casefold()
         ]
+
+    # --- полки ---
+
+    def create_shelf(self, name: str) -> int:
+        cur = self._conn.execute(
+            "INSERT INTO shelves (name) VALUES (?) ON CONFLICT(name) DO NOTHING",
+            (name.strip(),),
+        )
+        self._conn.commit()
+        row = self._conn.execute(
+            "SELECT id FROM shelves WHERE name = ?", (name.strip(),)
+        ).fetchone()
+        return row["id"] if row else -1
+
+    def delete_shelf(self, shelf_id: int) -> None:
+        self._conn.execute("DELETE FROM shelves WHERE id = ?", (shelf_id,))
+        self._conn.commit()
+
+    def all_shelves(self) -> list[sqlite3.Row]:
+        cur = self._conn.execute(
+            """
+            SELECT s.id, s.name, COUNT(sb.book_id) AS n
+            FROM shelves s LEFT JOIN shelf_books sb ON sb.shelf_id = s.id
+            GROUP BY s.id ORDER BY s.name COLLATE NOCASE
+            """
+        )
+        return cur.fetchall()
+
+    def shelf_books(self, shelf_id: int) -> list[sqlite3.Row]:
+        cur = self._conn.execute(
+            """
+            SELECT b.*, p.chapter, p.paragraph, p.scroll
+            FROM shelf_books sb
+            JOIN books b ON b.id = sb.book_id
+            LEFT JOIN progress p ON p.book_id = b.id
+            WHERE sb.shelf_id = ?
+            ORDER BY b.title COLLATE NOCASE
+            """,
+            (shelf_id,),
+        )
+        return cur.fetchall()
+
+    def add_book_to_shelf(self, shelf_id: int, book_id: int) -> bool:
+        cur = self._conn.execute(
+            "INSERT OR IGNORE INTO shelf_books (shelf_id, book_id) VALUES (?, ?)",
+            (shelf_id, book_id),
+        )
+        self._conn.commit()
+        return cur.rowcount > 0
+
+    def remove_book_from_shelf(self, shelf_id: int, book_id: int) -> None:
+        self._conn.execute(
+            "DELETE FROM shelf_books WHERE shelf_id = ? AND book_id = ?",
+            (shelf_id, book_id),
+        )
+        self._conn.commit()

@@ -132,3 +132,20 @@ class TestDb:
         assert len(bms) == 1
         db.remove_bookmark(bms[0]["id"])
         assert db.bookmarks(book_id) == []
+
+    def test_shelves(self, db: LibraryDB, book_fb2: Path, book_epub: Path):
+        book = parse(book_fb2)
+        b1 = db.upsert_book(book_fb2, book, "abc")
+        b2 = db.upsert_book(book_epub, parse(book_epub), "def")
+        s1 = db.create_shelf("Техника")
+        s2 = db.create_shelf("Художка")
+        assert db.add_book_to_shelf(s1, b1)
+        assert db.add_book_to_shelf(s1, b2)
+        assert not db.add_book_to_shelf(s1, b1)
+        assert [r["id"] for r in db.shelf_books(s1)] == [b1, b2]
+        shelves = db.all_shelves()
+        assert {r["name"]: r["n"] for r in shelves} == {"Техника": 2, "Художка": 0}
+        db.remove_book_from_shelf(s1, b1)
+        assert [r["id"] for r in db.shelf_books(s1)] == [b2]
+        db.delete_shelf(s2)
+        assert {r["name"] for r in db.all_shelves()} == {"Техника"}
