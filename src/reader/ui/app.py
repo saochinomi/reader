@@ -108,7 +108,8 @@ Horizontal#last_row {
 }
 
 Static#last_book {
-    height: 1;
+    height: auto;
+    text-align: center;
     color: $text;
     padding: 0 1;
 }

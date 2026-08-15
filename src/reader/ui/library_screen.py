@@ -62,9 +62,9 @@ class LibraryScreen(Screen):
 
     def compose(self) -> ComposeResult:
         yield Static(banner(), id="banner")
-        yield TabBar(on_open=self._open_from_tab, on_add=self.action_add_book)
         with Horizontal(id="last_row"):
             yield Static(id="last_book")
+        yield TabBar(on_open=self._open_from_tab, on_add=self.action_add_book)
         with Horizontal(id="table_row"):
             yield DataTable(id="books")
         with Horizontal(id="search_row"):
@@ -158,9 +158,13 @@ class LibraryScreen(Screen):
         recent = self.db.recent_books(1)
         if not recent:
             self.query_one("#last_book", Static).update(
-                f"[bold]{bright}─── Последняя книга ───[/bold]  "
-                f"[#5c5c5c]Нет недавних книг[/]  "
-                f"[{accent}]i — добавить книгу[/]"
+                "\n".join(
+                    [
+                        f"[bold]{bright}─── Последняя книга ───[/bold]",
+                        "[#5c5c5c]Нет недавних книг[/]",
+                        f"[{accent}]i — добавить книгу[/]",
+                    ]
+                )
             )
             return
         row = recent[0]
@@ -173,13 +177,15 @@ class LibraryScreen(Screen):
         if total:
             done = sum(c["n"] for c in json.loads(row["chapters"])[:chapter]) + paragraph
             pct = f"{round(done * 100 / total)}%"
-        author_part = f" · {authors}" if authors else ""
-        self.query_one("#last_book", Static).update(
-            f"[bold]{bright}─── Последняя книга ───[/bold]  "
-            f"[bold]{row['title']}[/bold]"
-            f"[#5c5c5c]{author_part} · {row['format'].upper()} · {pct} прочитано[/]  "
-            f"[{accent}]g — продолжить[/]"
-        )
+        lines = [
+            f"[bold]{bright}─── Последняя книга ───[/bold]",
+            f"[bold]{row['title']}[/bold]",
+        ]
+        if authors:
+            lines.append(f"[#5c5c5c]{authors}[/]")
+        lines.append(f"[#5c5c5c]{row['format'].upper()} · {pct} прочитано[/]")
+        lines.append(f"[{accent}]g — продолжить чтение[/]")
+        self.query_one("#last_book", Static).update("\n".join(lines))
 
     def _timer_tick(self) -> None:
         self.app.timer_tick()

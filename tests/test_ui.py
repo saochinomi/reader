@@ -281,8 +281,13 @@ class TestUi:
                 card = lib.query_one("#last_book")
                 assert card.styles.width.value == 98
                 assert card.display
-                assert "Нет недавних книг" in card.content  # type: ignore
                 assert card.parent.id == "last_row"
+                assert card.styles.text_align == "center"
+                assert "\n" in card.content  # type: ignore
+                assert "Нет недавних книг" in card.content  # type: ignore
+                tab_bar = lib.query_one(TabBar)
+                children = list(lib.query("*"))
+                assert children.index(card) < children.index(tab_bar)
                 search = lib.query_one("#search")
                 assert search.styles.width.value == 98
                 assert search.parent.id == "search_row"
