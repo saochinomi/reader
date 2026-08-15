@@ -6,8 +6,9 @@ from pathlib import Path
 from textual import on, work
 from textual.app import ComposeResult
 from textual.binding import Binding
+from textual.containers import Horizontal
 from textual.screen import Screen
-from textual.widgets import DataTable, Footer, Input, Static
+from textual.widgets import DataTable, Input, Static
 
 from ..db import LibraryDB
 from .all_bookmarks_screen import AllBookmarksScreen
@@ -38,6 +39,7 @@ class LibraryScreen(Screen):
     ]
 
     SORT_KEYS = [("title", "названию"), ("author", "автору"), ("year", "году")]
+    _MAX_TABLE_WIDTH = 110
 
     def __init__(self, db: LibraryDB, import_dir: str | None = None):
         super().__init__()
@@ -52,7 +54,8 @@ class LibraryScreen(Screen):
     def compose(self) -> ComposeResult:
         yield Static(banner(), id="banner")
         yield TabBar(on_open=self._open_from_tab, on_add=self.action_add_book)
-        yield DataTable(id="books")
+        with Horizontal(id="table_row"):
+            yield DataTable(id="books")
         yield Input(placeholder="Поиск по названию, автору, описанию…", id="search")
         yield StatusBar(id="statusbar")
         yield KeyBar(id="keybar")
@@ -62,6 +65,7 @@ class LibraryScreen(Screen):
         table.cursor_type = "row"
         table.zebra_stripes = True
         table.add_columns("Название", "Автор", "Год", "Формат", "Прогресс")
+        self._resize_center()
         self._refresh_table()
         self._update_tabs()
         self.query_one("#keybar", KeyBar).set_keys(KeyBar.library())
@@ -69,6 +73,14 @@ class LibraryScreen(Screen):
             self._import_dir(self.import_dir_on_start)
         else:
             self._scan_books_dir()
+
+    def on_resize(self) -> None:
+        self._resize_center()
+
+    def _resize_center(self) -> None:
+        width = max(40, min(self._MAX_TABLE_WIDTH, self.size.width - 2))
+        self.query_one("#books", DataTable).styles.width = width
+        self.query_one("#search", Input).styles.width = width
 
     def on_screen_resume(self, event) -> None:
         self._refresh_table()

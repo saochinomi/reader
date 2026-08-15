@@ -44,5 +44,6 @@ def banner(word: str = "READER") -> str:
     if not letters:
         return word
     height = len(letters[0])
-    rows = [_GAP.join(letter[r] for letter in letters).rstrip() for r in range(height)]
-    return "\n".join(rows)
+    rows = [_GAP.join(letter[r] for letter in letters) for r in range(height)]
+    width = max(len(r) for r in rows)
+    return "\n".join(r.ljust(width) for r in rows)

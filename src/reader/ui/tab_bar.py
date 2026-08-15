@@ -15,6 +15,7 @@ class TabBar(Horizontal):
         height: 3;
         padding: 0 1;
         align-vertical: middle;
+        align-horizontal: center;
     }
 
     TabBar Button {

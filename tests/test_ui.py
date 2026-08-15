@@ -115,6 +115,8 @@ class TestUi:
                 assert "███████╗" in banner.content
                 assert "██████╔╝" in banner.content
                 assert "╚═════╝" in banner.content
+                lines = banner.content.split("\n")
+                assert len(set(len(l) for l in lines)) == 1
                 assert lib.query_one(TabBar) is not None
                 status = lib.query_one(StatusBar)
                 assert "книг: 0" in status.content
@@ -258,6 +260,32 @@ class TestUi:
                 await pilot.pause()
                 assert isinstance(app.screen, ReaderScreen)
                 assert app.screen.book_id == id1
+
+        asyncio.run(scenario())
+
+    def test_centered_layout(self, tmp_path: Path):
+        _home(tmp_path)
+        book = tmp_path / "book.fb2"
+        write_fixture(book, build_fb2())
+
+        async def scenario():
+            from reader.library import import_book
+
+            app = ReaderApp(tmp_path / "lib.db")
+            async with app.run_test(size=(100, 40)) as pilot:
+                lib = app.screen
+                table = lib.query_one("#books")
+                assert table.styles.width.value == 98
+                search = lib.query_one("#search")
+                assert search.styles.width.value == 98
+
+                book_id = import_book(app.db, book)
+                app.push_screen(ReaderScreen(app.db, book_id))
+                await pilot.pause()
+                reader = app.screen
+                content = reader.query_one("#content")
+                assert content.styles.width.value <= 84
+                assert reader.query_one("#content_row") is not None
 
         asyncio.run(scenario())
 

@@ -98,6 +98,11 @@ DataTable {
     padding: 0 1;
 }
 
+Horizontal#table_row {
+    height: 1fr;
+    align-horizontal: center;
+}
+
 DataTable > .datatable--header {
     background: #0d0d0d;
     color: $text-muted;
@@ -171,6 +176,12 @@ Static#chapter {
     height: 1;
     color: #8a8a8a;
     padding: 0 1;
+    text-align: center;
+}
+
+Horizontal#content_row {
+    height: 1fr;
+    align-horizontal: center;
 }
 
 Static#content {

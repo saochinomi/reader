@@ -4,6 +4,7 @@ from bisect import bisect_left, bisect_right
 
 from textual.app import ComposeResult
 from textual.binding import Binding
+from textual.containers import Horizontal
 from textual.screen import Screen
 from textual.widgets import Static
 
@@ -17,6 +18,7 @@ from .key_bar import KeyBar
 from .status_bar import StatusBar
 
 _WIDTH_MODES = (1.0, 0.8, 0.65)
+_MAX_TEXT_WIDTH = 84
 
 
 class ReaderScreen(Screen):
@@ -47,7 +49,8 @@ class ReaderScreen(Screen):
 
     def compose(self) -> ComposeResult:
         yield Static(id="chapter")
-        yield Static(id="content")
+        with Horizontal(id="content_row"):
+            yield Static(id="content")
         yield StatusBar(id="statusbar")
         yield KeyBar(id="keybar")
 
@@ -66,8 +69,9 @@ class ReaderScreen(Screen):
     def _rebuild_renderer(self) -> None:
         assert self.book is not None
         mode = _WIDTH_MODES[self.width_mode]
-        width = max(20, int((self.size.width - 2) * mode))
+        width = max(20, int(min(_MAX_TEXT_WIDTH, self.size.width - 2) * mode))
         height = max(5, self.size.height - 2)
+        self.query_one("#content", Static).styles.width = width
         if self.renderer is None:
             self.renderer = BookRenderer(self.book, width=width, height=height)
             return
