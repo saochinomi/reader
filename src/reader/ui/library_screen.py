@@ -63,9 +63,10 @@ class LibraryScreen(Screen):
     def compose(self) -> ComposeResult:
         yield Static(banner(), id="banner")
         yield TabBar(on_open=self._open_from_tab, on_add=self.action_add_book)
-        with Horizontal(id="library_row"):
-            yield DataTable(id="books")
+        with Horizontal(id="last_row"):
             yield Static(id="last_book")
+        with Horizontal(id="table_row"):
+            yield DataTable(id="books")
         with Horizontal(id="search_row"):
             yield Input(placeholder="Поиск по названию, автору, описанию…", id="search")
         yield StatusBar(id="statusbar")
@@ -90,19 +91,10 @@ class LibraryScreen(Screen):
         self._resize_center()
 
     def _resize_center(self) -> None:
-        table = self.query_one("#books", DataTable)
-        card = self.query_one("#last_book", Static)
-        width = self.size.width
-        if width < 100:
-            card.display = False
-            table.styles.width = max(40, min(self._MAX_TABLE_WIDTH, width - 2))
-        else:
-            card.display = True
-            table_w = max(30, int(width * 0.30))
-            card_w = max(30, int(width * 0.40))
-            table.styles.width = table_w
-            card.styles.width = card_w
-            card.styles.margin_right = max(0, width - table_w - card_w)
+        width = max(40, min(self._MAX_TABLE_WIDTH, self.size.width - 2))
+        self.query_one("#books", DataTable).styles.width = width
+        self.query_one("#last_book", Static).styles.width = width
+        self.query_one("#search", Input).styles.width = width
 
     def on_screen_resume(self, event) -> None:
         if self._current_shelf_id is not None:
@@ -166,13 +158,9 @@ class LibraryScreen(Screen):
         recent = self.db.recent_books(1)
         if not recent:
             self.query_one("#last_book", Static).update(
-                "\n\n".join(
-                    [
-                        f"[bold]{bright}─── Последняя книга ───[/bold]",
-                        "[#5c5c5c]Нет недавних книг[/]",
-                        f"[{accent}]i — добавить книгу[/]",
-                    ]
-                )
+                f"[bold]{bright}─── Последняя книга ───[/bold]  "
+                f"[#5c5c5c]Нет недавних книг[/]  "
+                f"[{accent}]i — добавить книгу[/]"
             )
             return
         row = recent[0]
@@ -185,13 +173,13 @@ class LibraryScreen(Screen):
         if total:
             done = sum(c["n"] for c in json.loads(row["chapters"])[:chapter]) + paragraph
             pct = f"{round(done * 100 / total)}%"
-        parts = [f"[bold]{bright}─── Последняя книга ───[/bold]", ""]
-        parts.append(f"[bold]{row['title']}[/bold]")
-        if authors:
-            parts.append(f"[#5c5c5c]{authors}[/]")
-        parts.append(f"[#5c5c5c]{row['format'].upper()} · {pct} прочитано[/]")
-        parts.append(f"[{accent}]g — продолжить чтение[/]")
-        self.query_one("#last_book", Static).update("\n".join(parts))
+        author_part = f" · {authors}" if authors else ""
+        self.query_one("#last_book", Static).update(
+            f"[bold]{bright}─── Последняя книга ───[/bold]  "
+            f"[bold]{row['title']}[/bold]"
+            f"[#5c5c5c]{author_part} · {row['format'].upper()} · {pct} прочитано[/]  "
+            f"[{accent}]g — продолжить[/]"
+        )
 
     def _timer_tick(self) -> None:
         self.app.timer_tick()

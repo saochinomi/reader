@@ -277,12 +277,14 @@ class TestUi:
             async with app.run_test(size=(100, 40)) as pilot:
                 lib = app.screen
                 table = lib.query_one("#books")
-                assert table.styles.width.value == 30
+                assert table.styles.width.value == 98
                 card = lib.query_one("#last_book")
-                assert card.styles.width.value == 40
+                assert card.styles.width.value == 98
                 assert card.display
                 assert "Нет недавних книг" in card.content  # type: ignore
+                assert card.parent.id == "last_row"
                 search = lib.query_one("#search")
+                assert search.styles.width.value == 98
                 assert search.parent.id == "search_row"
 
                 book_id = import_book(app.db, book)
@@ -303,7 +305,7 @@ class TestUi:
 
         asyncio.run(scenario())
 
-    def test_narrow_window_hides_last_book_card(self, tmp_path: Path):
+    def test_narrow_window_last_book_visible(self, tmp_path: Path):
         _home(tmp_path)
 
         async def scenario():
@@ -311,9 +313,10 @@ class TestUi:
             async with app.run_test(size=(80, 40)) as pilot:
                 lib = app.screen
                 card = lib.query_one("#last_book")
-                assert not card.display
+                assert card.display
                 table = lib.query_one("#books")
                 assert table.styles.width.value == 78
+                assert card.styles.width.value == 78
 
         asyncio.run(scenario())
 

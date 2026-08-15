@@ -102,33 +102,20 @@ DataTable {
     padding: 0 1;
 }
 
-Horizontal#library_row {
-    height: 1fr;
-}
-
-DataTable#books {
-    width: 30%;
+Horizontal#last_row {
+    height: auto;
+    align-horizontal: center;
 }
 
 Static#last_book {
-    width: 40%;
-    height: auto;
-    background: #0a0a0a;
+    height: 1;
     color: $text;
-    padding: 1 2;
+    padding: 0 1;
 }
 
-Static#last_book .lb-title {
-    text-style: bold;
-    color: $text;
-}
-
-Static#last_book .lb-accent {
-    color: $accent;
-}
-
-Static#last_book .lb-muted {
-    color: $text-muted;
+Horizontal#table_row {
+    height: 1fr;
+    align-horizontal: center;
 }
 
 Horizontal#search_row {
