@@ -8,18 +8,18 @@ from textual.screen import Screen
 from textual.widgets import Footer, OptionList, Static
 from textual.widgets.option_list import Option
 
-from .highlight_colors import HIGHLIGHT_COLORS
+from .highlight_colors import ACTION_COPY, HIGHLIGHT_COLORS
 
 
 class HighlightColorScreen(Screen[Optional[str]]):
-    """Выбор цвета для выделенного фрагмента. Возвращает имя цвета."""
+    """Выбор действия для выделенного текста. Возвращает имя цвета или ACTION_COPY."""
 
     BINDINGS = [
         Binding("escape", "cancel", "Отмена"),
     ]
 
     def compose(self) -> ComposeResult:
-        yield Static("Выделение: выберите цвет", id="bookmark_title")
+        yield Static("Выделенный текст: выберите цвет или скопируйте", id="bookmark_title")
         yield OptionList(id="list")
         yield Footer()
 
@@ -32,6 +32,7 @@ class HighlightColorScreen(Screen[Optional[str]]):
                     id=name,
                 )
             )
+        ol.add_option(Option("[#8a8a8a]✂[/]  Копировать текст", id=ACTION_COPY))
         ol.highlighted = 0
         ol.focus()
 

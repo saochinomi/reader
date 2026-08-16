@@ -395,11 +395,12 @@ class TestUi:
                 content = reader.query_one("#content")
                 assert "on #3a3a3a" not in content.content  # type: ignore
 
-                await pilot.press("m")
+                await pilot.mouse_down("#content", offset=(1, 0))
+                await pilot.hover("#content", offset=(25, 2))
+                await pilot.mouse_up("#content", offset=(25, 2))
                 await pilot.pause()
                 assert "on #3a3a3a" in content.content  # type: ignore
-                await pilot.press("j")
-                await pilot.pause()
+
                 await pilot.press("m")
                 await pilot.pause()
                 assert app.screen.__class__.__name__ == "HighlightColorScreen"
@@ -429,13 +430,67 @@ class TestUi:
                 app.push_screen(ReaderScreen(app.db, book_id))
                 await pilot.pause()
                 reader = app.screen
-                await pilot.press("m")
+                await pilot.mouse_down("#content", offset=(1, 0))
+                await pilot.mouse_up("#content", offset=(30, 1))
                 await pilot.pause()
+                assert reader._sel_start is not None
                 await pilot.press("escape")
                 await pilot.pause()
                 assert isinstance(app.screen, ReaderScreen)
-                assert reader._mark is None
+                assert reader._sel_start is None
                 assert app.db.highlights(book_id) == []
+
+        asyncio.run(scenario())
+
+    def test_highlight_copy(self, tmp_path: Path):
+        _home(tmp_path)
+        book = tmp_path / "big.txt"
+        big = ("Абзац книги. Ещё предложение текста.\n\n" * 100).encode("utf-8")
+        write_fixture(book, big)
+
+        async def scenario():
+            from reader.library import import_book
+
+            app = ReaderApp(tmp_path / "lib.db", splash=False)
+            async with app.run_test(size=(100, 40)) as pilot:
+                captured: list[str] = []
+                app.copy_to_clipboard = lambda text: captured.append(text)
+                book_id = import_book(app.db, book)
+                app.push_screen(ReaderScreen(app.db, book_id))
+                await pilot.pause()
+                reader = app.screen
+                await pilot.mouse_down("#content", offset=(1, 0))
+                await pilot.mouse_up("#content", offset=(25, 1))
+                await pilot.pause()
+                await pilot.press("m")
+                await pilot.pause()
+                for _ in range(5):
+                    await pilot.press("down")
+                await pilot.press("enter")
+                await pilot.pause()
+                assert isinstance(app.screen, ReaderScreen)
+                assert captured and captured[0].startswith("Абзац книги")
+                assert app.db.highlights(book_id) == []
+                assert reader._sel_start is None
+
+        asyncio.run(scenario())
+
+    def test_mark_without_selection(self, tmp_path: Path):
+        _home(tmp_path)
+        book = tmp_path / "book.fb2"
+        write_fixture(book, build_fb2())
+
+        async def scenario():
+            from reader.library import import_book
+
+            app = ReaderApp(tmp_path / "lib.db", splash=False)
+            async with app.run_test(size=(100, 40)) as pilot:
+                book_id = import_book(app.db, book)
+                app.push_screen(ReaderScreen(app.db, book_id))
+                await pilot.pause()
+                await pilot.press("m")
+                await pilot.pause()
+                assert isinstance(app.screen, ReaderScreen)
 
         asyncio.run(scenario())
 

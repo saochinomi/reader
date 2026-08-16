@@ -9,3 +9,5 @@ HIGHLIGHT_COLORS: dict[str, str] = {
 }
 
 PREVIEW_BG = "on #3a3a3a"
+
+ACTION_COPY = "copy"

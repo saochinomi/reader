@@ -4,6 +4,7 @@ import time
 from bisect import bisect_left, bisect_right
 
 from rich.markup import escape
+from textual import events, on
 from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
@@ -17,7 +18,7 @@ from .bookmarks_screen import BookmarksScreen
 from .color_screen import ColorScreen
 from .help_screen import HelpScreen
 from .highlight_color_screen import HighlightColorScreen
-from .highlight_colors import HIGHLIGHT_COLORS, PREVIEW_BG
+from .highlight_colors import ACTION_COPY, HIGHLIGHT_COLORS, PREVIEW_BG
 from .key_bar import KeyBar
 from .notes_screen import NotesScreen
 from .status_bar import StatusBar
@@ -56,7 +57,10 @@ class ReaderScreen(Screen):
         self.page_index = 0
         self.width_mode = 0
         self._highlight_until = 0.0
-        self._mark: tuple[int, int, int] | None = None
+        self._sel_start: tuple[int, int, int] | None = None
+        self._sel_end: tuple[int, int, int] | None = None
+        self._sel_text = ""
+        self._mouse_sel = False
 
     def compose(self) -> ComposeResult:
         with Horizontal(id="main_row"):
@@ -135,12 +139,8 @@ class ReaderScreen(Screen):
                     markup,
                 )
             )
-        if self._mark is not None and meta:
-            s = self._mark
-            mci, mpi, moff = meta[0]
-            e = (mci, mpi, moff + len(lines[0]))
-            if e < s:
-                s, e = e, s
+        if self._sel_start is not None and self._sel_end is not None:
+            s, e = sorted((self._sel_start, self._sel_end))
             if e > s:
                 ranges.append((s, e, PREVIEW_BG))
         if not ranges:
@@ -234,30 +234,93 @@ class ReaderScreen(Screen):
         self.app.notify("Закладка добавлена", severity="information")
 
     def action_mark(self) -> None:
-        assert self.renderer is not None
-        page = self.renderer.render(self.page_index)
-        if self._mark is None:
-            if not page.meta:
-                return
-            self._mark = page.meta[0]
-            self.app.notify("Выделение: m - закончить, Esc - отмена", severity="information")
-            self._draw()
+        if self._sel_start is None or self._sel_end is None:
+            self.app.notify(
+                "Выделите текст мышью: зажать, протянуть, отпустить",
+                severity="warning",
+            )
             return
-        start = self._mark
-        self._mark = None
-        if not page.meta:
-            return
-        mci, mpi, moff = page.meta[0]
-        end = (mci, mpi, moff + (len(page.lines[0]) if page.lines else 0))
+        start, end = sorted((self._sel_start, self._sel_end))
         if end <= start:
-            self.app.notify("Выделение слишком короткое", severity="warning")
-            self._draw()
             return
-        text = self._collect_text(start, end)
+        text = self._sel_text or self._collect_text(start, end)
         self.app.push_screen(
             HighlightColorScreen(),
-            lambda color: self._on_highlight_color(color, start, end, text),
+            lambda result: self._on_sel_action(result, start, end, text),
         )
+
+    def _on_sel_action(
+        self,
+        result: str | None,
+        start: tuple[int, int, int],
+        end: tuple[int, int, int],
+        text: str,
+    ) -> None:
+        self._sel_start = None
+        self._sel_end = None
+        self._sel_text = ""
+        if result is None:
+            self._draw()
+            return
+        if result == ACTION_COPY:
+            self.app.copy_to_clipboard(text)
+            self.app.notify("Текст скопирован", severity="information")
+            self._draw()
+            return
+        self.db.add_highlight(self.book_id, *start, *end, result, text)
+        self.app.notify(f"Заметка добавлена ({result})", severity="information")
+        self._draw()
+
+    def _mouse_pos(self, x: float, y: float) -> tuple[int, int, int] | None:
+        assert self.renderer is not None
+        page = self.renderer.render(self.page_index)
+        row = int(y)
+        if not page.meta or row < 0 or row >= len(page.meta):
+            return None
+        ci, pi, off = page.meta[row]
+        line = page.lines[row]
+        col = max(0, min(int(x) - 1, len(line)))
+        return ci, pi, off + col
+
+    @on(events.MouseDown, "#content")
+    def _on_mouse_down(self, event: events.MouseDown) -> None:
+        if event.button != 1:
+            return
+        pos = self._mouse_pos(event.x, event.y)
+        if pos is None:
+            return
+        self._sel_start = pos
+        self._sel_end = pos
+        self._sel_text = ""
+        self._mouse_sel = True
+        self.query_one("#content", Static).capture_mouse()
+
+    @on(events.MouseMove, "#content")
+    def _on_mouse_move(self, event: events.MouseMove) -> None:
+        if not self._mouse_sel:
+            return
+        pos = self._mouse_pos(event.x, event.y)
+        if pos is not None and pos != self._sel_end:
+            self._sel_end = pos
+            self._draw()
+
+    @on(events.MouseUp, "#content")
+    def _on_mouse_up(self, event: events.MouseUp) -> None:
+        if event.button != 1:
+            return
+        self._mouse_sel = False
+        self.query_one("#content", Static).release_mouse()
+        if self._sel_start is None or self._sel_end is None:
+            return
+        start, end = sorted((self._sel_start, self._sel_end))
+        if end <= start:
+            self._sel_start = None
+            self._sel_end = None
+            self._draw()
+            return
+        self._sel_text = self._collect_text(start, end)
+        self.app.notify("Выделено: m - что сделать с текстом", severity="information")
+        self._draw()
 
     def _collect_text(self, start: tuple[int, int, int], end: tuple[int, int, int]) -> str:
         assert self.book is not None
@@ -271,20 +334,6 @@ class ReaderScreen(Screen):
                 parts.append(t[s:e])
         text = " ".join(parts).strip()
         return text if len(text) <= 200 else text[:197] + "…"
-
-    def _on_highlight_color(
-        self,
-        color: str | None,
-        start: tuple[int, int, int],
-        end: tuple[int, int, int],
-        text: str,
-    ) -> None:
-        if color is None:
-            self._draw()
-            return
-        self.db.add_highlight(self.book_id, *start, *end, color, text)
-        self.app.notify(f"Заметка добавлена ({color})", severity="information")
-        self._draw()
 
     def action_show_notes(self) -> None:
         assert self.renderer is not None
@@ -381,8 +430,10 @@ class ReaderScreen(Screen):
             self._draw()
 
     def action_back(self) -> None:
-        if self._mark is not None:
-            self._mark = None
+        if self._sel_start is not None:
+            self._sel_start = None
+            self._sel_end = None
+            self._sel_text = ""
             self._draw()
             return
         self.app.pop_screen()
