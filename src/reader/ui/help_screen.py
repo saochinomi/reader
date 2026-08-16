@@ -13,6 +13,7 @@ _SECTIONS = [
             ("Enter", "открыть выбранную книгу"),
             ("g", "продолжить последнюю книгу (клик по карточке)"),
             ("j / k / стрелки", "навигация по карточкам"),
+            ("Tab / Shift+Tab", "следующая / предыдущая карточка"),
             ("h / l", "полки слева / карточки"),
             ("клик по полке", "открыть полку"),
             ("клик по карточке", "открыть книгу"),
@@ -67,9 +68,9 @@ class HelpScreen(Screen):
 
     def on_mount(self) -> None:
         _acc, bright, _bg, _dim = self.app.accent_colors()
-        lines = [f"[bold]{bright} Клавиши[/bold]", ""]
+        lines = [f"[bold]{bright} Клавиши[/]", ""]
         for title, pairs in _SECTIONS:
-            lines.append(f"[bold #c8c8c8]{title}[/bold]")
+            lines.append(f"[bold #c8c8c8]{title}[/]")
             for key, desc in pairs:
                 lines.append(f"  [{_acc}]{key:>8}[/]  {desc}")
             lines.append("")

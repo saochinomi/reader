@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import time
+
+from rich.cells import cell_len
 from rich.text import Text
 from textual.widgets import Static
 
@@ -35,7 +38,8 @@ class StatusBar(Static):
             mid.append(f"по {sort_label}")
         if query:
             mid.append(f"«{query}»")
-        self._zones(left, " · ".join(mid), timer)
+        right = self._timer_zone(timer)
+        self._zones(left, " · ".join(mid), right)
 
     def read(
         self,
@@ -58,17 +62,37 @@ class StatusBar(Static):
         mid = f"[{color}]{bar}[/] [#c8c8c8]{pct}%[/]"
         if page:
             mid += f" [#8a8a8a]{page}[/]"
-        right = f"[#8a8a8a]{timer}[/]" if timer else ""
+        parts = [timer] if timer else []
         if fmt:
-            right += (f" [#8a8a8a]{fmt}[/]" if right else f"[#8a8a8a]{fmt}[/]")
+            parts.append(fmt)
+        right = self._timer_zone(" · ".join(parts))
         self._zones(left, mid, right)
+
+    def _timer_zone(self, timer: str) -> str:
+        """Таймер, часы и когда закончится чтение."""
+        parts = [timer] if timer else []
+        parts.append(time.strftime("%H:%M"))
+        if timer and not timer.startswith("‖"):
+            mmss = timer.split(":")
+            try:
+                end = time.time() + int(mmss[0]) * 60 + int(mmss[1])
+            except (ValueError, IndexError):
+                end = None
+            if end is not None:
+                parts.append(f"→ {time.strftime('%H:%M', time.localtime(end))}")
+        return f"[#8a8a8a]{' · '.join(parts)}[/]"
 
     def _zones(self, left: str, mid: str, right: str) -> None:
         width = max(1, self.size.width)
-        lw = len(Text.from_markup(left))
-        mw = len(Text.from_markup(mid))
-        rw = len(Text.from_markup(right))
+        lw = cell_len(Text.from_markup(left).plain)
+        mw = cell_len(Text.from_markup(mid).plain)
+        rw = cell_len(Text.from_markup(right).plain)
         free = width - lw - rw
+        if free - mw < 0:
+            mid_text = Text.from_markup(mid)
+            mid_text.truncate(max(0, free), overflow="ellipsis")
+            self.update(Text.from_markup(left) + " " + mid_text + " " + Text.from_markup(right))
+            return
         pad_l = max(0, (free - mw) // 2)
         pad_r = max(0, free - mw - pad_l)
         self.update(f"{left}{' ' * pad_l}{mid}{' ' * pad_r}{right}")

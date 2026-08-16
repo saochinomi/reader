@@ -418,8 +418,8 @@ class ReaderApp(App):
         total = self._timer_minutes * 60
         left = int(self._timer_left + 0.999)
         mm, ss = divmod(left, 60)
-        icon = "⏳" if self._timer_running or left >= total else "⏸"
-        return f"{icon} {mm:02d}:{ss:02d}"
+        icon = "" if self._timer_running or left >= total else "‖ "
+        return f"{icon}{mm:02d}:{ss:02d}"
 
     def on_mount(self) -> None:
         books_dir = Path.home() / "Books"

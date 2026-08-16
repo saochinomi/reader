@@ -126,7 +126,7 @@ class TestUi:
                 assert len(status.content) > 0 and "книг: 1" in status.content
                 assert "книг: 1" in headline.content
                 cards = lib.query_one("#cards", Static)
-                assert "╭" in cards.content and "⏵" in cards.content
+                assert "╭" in cards.content and "▷" in cards.content
                 tabs = lib.query_one(TabBar)
                 for _ in range(50):
                     await pilot.pause()
@@ -848,11 +848,11 @@ class TestUi:
                 lib = app.screen
                 lib._refresh_cards()
                 cards = lib.query_one("#cards", Static)
-                assert "⚑" not in cards.content
+                assert "◆" not in cards.content
                 app.db.add_bookmark(id1, 0, 1, "заметка")
                 app.db.add_bookmark(id1, 1, 2, "")
                 lib._refresh_cards()
-                assert "⚑" in cards.content
+                assert "◆" in cards.content
 
         asyncio.run(scenario())
 
@@ -919,7 +919,7 @@ class TestUi:
                 lib = app.screen
                 lib._refresh_cards()
                 cards = lib.query_one("#cards", Static)
-                assert "⏵" in cards.content
+                assert "▷" in cards.content
                 await pilot.press("g")
                 await pilot.pause()
                 assert isinstance(app.screen, ReaderScreen)
@@ -1051,6 +1051,7 @@ class TestUi:
                 await pilot.pause()
                 assert lib._current_shelf_id == sid
                 assert lib._visible == [id1]
+                assert lib._focus == "grid"
                 await pilot.press("l")
                 await pilot.pause()
                 assert lib._focus == "grid"
@@ -1087,10 +1088,120 @@ class TestUi:
                 await pilot.pause()
                 assert lib._current_shelf_id == sid
                 assert lib._visible == [id1]
+                assert lib._focus == "grid"
                 await pilot.click(shelves, offset=(2, 0))
                 await pilot.pause()
                 assert lib._current_shelf_id is None
                 assert len(lib._visible) == 2
+
+        asyncio.run(scenario())
+
+    def test_help_opens(self, tmp_path: Path):
+        _home(tmp_path)
+
+        async def scenario():
+            app = ReaderApp(tmp_path / "lib.db", splash=False)
+            async with app.run_test(size=(100, 40)) as pilot:
+                lib = app.screen
+                await pilot.press("?")
+                await pilot.pause()
+                from reader.ui.help_screen import HelpScreen
+
+                assert isinstance(app.screen, HelpScreen)
+                assert "Клавиши" in app.screen.query_one("#help", Static).content
+                await pilot.press("q")
+                await pilot.pause()
+                assert isinstance(app.screen, type(lib))
+                await pilot.press("/")
+                await pilot.pause()
+                await pilot.press("?")
+                await pilot.pause()
+                assert isinstance(app.screen, HelpScreen)
+
+        asyncio.run(scenario())
+
+    def test_tab_navigates_cards(self, tmp_path: Path):
+        _home(tmp_path)
+        b1 = tmp_path / "a.fb2"
+        b2 = tmp_path / "b.fb2"
+        write_fixture(b1, build_fb2(title="Альфа"))
+        write_fixture(b2, build_fb2(title="Бета"))
+
+        async def scenario():
+            from reader.library import import_book
+
+            app = ReaderApp(tmp_path / "lib.db", splash=False)
+            async with app.run_test(size=(100, 40)) as pilot:
+                id1 = import_book(app.db, b1)
+                id2 = import_book(app.db, b2)
+                lib = app.screen
+                lib._refresh_cards()
+                assert lib._selected_id == id1
+                await pilot.press("tab")
+                await pilot.pause()
+                assert lib._selected_id == id2
+                await pilot.press("shift+tab")
+                await pilot.pause()
+                assert lib._selected_id == id1
+                await pilot.press("tab")
+                await pilot.pause()
+                await pilot.press("enter")
+                await pilot.pause()
+                assert isinstance(app.screen, ReaderScreen)
+                assert app.screen.book_id == id2
+
+        asyncio.run(scenario())
+
+    def test_card_lines_fit(self, tmp_path: Path):
+        _home(tmp_path)
+        book = tmp_path / "book.fb2"
+        write_fixture(
+            book,
+            build_fb2(
+                title="Очень длинное название книги для проверки переноса",
+                author="Автор С Очень Длинным Именем",
+            ),
+        )
+
+        async def scenario():
+            from rich.text import Text
+
+            from reader.library import import_book
+
+            app = ReaderApp(tmp_path / "lib.db", splash=False)
+            async with app.run_test(size=(100, 40)) as pilot:
+                book_id = import_book(app.db, book)
+                app.db.add_bookmark(book_id, 0, 1, "з")
+                app.db.save_progress(book_id, 0, 1, 1)
+                lib = app.screen
+                lib._refresh_cards()
+                row = lib._rows[str(book_id)]
+                for line in lib._card_lines(row, False, 1, True):
+                    assert len(Text.from_markup(line).plain) == lib.CARD_W
+
+        asyncio.run(scenario())
+
+    def test_statusbar_clock(self, tmp_path: Path):
+        _home(tmp_path)
+        book = tmp_path / "book.fb2"
+        write_fixture(book, build_fb2())
+
+        async def scenario():
+            import re
+
+            from reader.library import import_book
+
+            app = ReaderApp(tmp_path / "lib.db", splash=False)
+            async with app.run_test(size=(100, 40)) as pilot:
+                lib = app.screen
+                import_book(app.db, book)
+                lib._refresh_status()
+                status = lib.query_one("#statusbar", StatusBar)
+                assert re.search(r"\d{2}:\d{2}", status.content)
+                assert "30:00" in status.content
+                app.timer_start_pause()
+                lib._refresh_status()
+                assert re.search(r"→ \d{2}:\d{2}", status.content)
 
         asyncio.run(scenario())
 
@@ -1126,7 +1237,7 @@ class TestUi:
             async with app.run_test(size=(100, 40)) as pilot:
                 lib = app.screen
                 assert app.timer_minutes() == 30
-                assert "⏳ 30:00" in lib.query_one("#statusbar", StatusBar).content
+                assert "30:00" in lib.query_one("#statusbar", StatusBar).content
                 assert "30:00" in app.timer_text()
 
                 app.set_timer_minutes(45)
@@ -1153,7 +1264,7 @@ class TestUi:
                 app.push_screen(ReaderScreen(app.db, import_book(app.db, book)))
                 await pilot.pause()
                 status = app.screen.query_one("#statusbar", StatusBar)
-                assert "⏳" in status.content or "⏸" in status.content
+                assert "‖ 00:00" in status.content
 
         asyncio.run(scenario())
 

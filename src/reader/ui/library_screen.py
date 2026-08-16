@@ -29,7 +29,8 @@ class LibraryScreen(Screen):
     BINDINGS = [
         Binding("i", "add_book", "Добавить"),
         Binding("enter", "open_book", "Открыть"),
-        Binding("tab", "next_tab", "Вкладки"),
+        Binding("tab", "tab_next", "Дальше"),
+        Binding("shift+tab", "cursor_left", "Назад"),
         Binding("/", "focus_search", "Поиск"),
         Binding("u", "rescan", "Сканировать"),
         Binding("d", "delete_book", "Удалить"),
@@ -218,18 +219,18 @@ class LibraryScreen(Screen):
             pct = f"{round(done * 100 / total)}%"
         else:
             pct = "-"
-        flag = f"[{bright}]⚑[/] " if bookmarks else ""
-        badge = f"[{bright}] ⏵[/]" if is_last else ""
+        flag = f"[{bright}]◆[/] " if bookmarks else ""
+        badge = f"[{bright}] ▷[/]" if is_last else ""
         right_len = (2 if bookmarks else 0) + len(pct) + (2 if is_last else 0)
         a_max = w - right_len - 1
         a_line = authors if len(authors) <= a_max else authors[: a_max - 1] + "…"
-        a_pad = w - len(a_line) - right_len
+        a_line = a_line.ljust(w - right_len)
         return [
             f"[{border}]╭{'─' * w}╮[/]",
             f"[{border}]│[/][on {bg}][{bright}]{c1}[/][/][{border}]│[/]",
             f"[{border}]│[/][on {bg}][{accent}]{c2}[/][/][{border}]│[/]",
             f"[{border}]│[/][on {inner}][bold][#c8c8c8]{t_line.ljust(w)}[/][/][/][{border}]│[/]",
-            f"[{border}]│[/][on {inner}][#8a8a8a]{a_line.ljust(a_pad)}[/][/]{flag}[{accent}]{pct}[/]{badge}[{border}]│[/]",
+            f"[{border}]│[/][on {inner}][#8a8a8a]{a_line}[/][/]{flag}[{accent}]{pct}[/]{badge}[{border}]│[/]",
             f"[{border}]╰{'─' * w}╯[/]",
         ]
 
@@ -340,7 +341,14 @@ class LibraryScreen(Screen):
             self._current_shelf_name = name if shelf_id is not None else ""
             self._selected_id = None
             self._refresh_cards()
+        self._focus = "grid"
         self._refresh_shelves()
+
+    def action_tab_next(self) -> None:
+        if self._focus == "shelves":
+            self._focus = "grid"
+            self._refresh_shelves()
+        self.action_cursor_right()
 
 
     def action_add_book(self) -> None:
@@ -453,18 +461,6 @@ class LibraryScreen(Screen):
         self._selected_id = book_id
         self.run_worker(self.action_open_book())
 
-    def action_next_tab(self) -> None:
-        if not self._tabs:
-            return
-        try:
-            idx = [t for t in self._tabs if t[0] == self._current_book_id()]
-            current = self._tabs.index(idx[0]) if idx else -1
-        except (ValueError, IndexError):
-            current = -1
-        book_id = self._tabs[(current + 1) % len(self._tabs)][0]
-        self._selected_id = book_id
-        self.action_open_book()
-
     def action_show_help(self) -> None:
         self.app.push_screen(HelpScreen())
 
@@ -494,6 +490,7 @@ class LibraryScreen(Screen):
         for i, (sid, _n, _c) in enumerate(self._shelves):
             if sid == self._current_shelf_id:
                 self._shelf_index = i
+        self._focus = "grid"
         self._refresh_cards()
         self._refresh_shelves()
 
@@ -569,6 +566,10 @@ class LibraryScreen(Screen):
 
     @on(Input.Changed, "#search")
     def _on_search_changed(self, event: Input.Changed) -> None:
+        if event.value == "?":
+            self.query_one("#search", Input).value = ""
+            self.action_show_help()
+            return
         self._selected_id = None
         self._refresh_cards()
 
