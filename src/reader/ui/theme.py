@@ -11,6 +11,7 @@ PALETTES: dict[str, tuple[str, str, str, str]] = {
     "orange": ("#e0834f", "#ff9e64", "#3a2816", "#2e1f12"),
     "cyan": ("#62b4d4", "#7dcfff", "#16323a", "#11272e"),
     "yellow": ("#c9a94f", "#e0af68", "#3a3316", "#2e2912"),
+    "white": ("#b8b8b8", "#ffffff", "#3a3a3a", "#2b2b2b"),
 }
 
 _NAMES: dict[str, str] = {
@@ -21,6 +22,7 @@ _NAMES: dict[str, str] = {
     "orange": "Оранжевый",
     "cyan": "Бирюзовый",
     "yellow": "Жёлтый",
+    "white": "Белый",
 }
 
 

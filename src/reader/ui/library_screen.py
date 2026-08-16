@@ -17,7 +17,6 @@ from .color_screen import ColorScreen
 from .confirm_screen import ConfirmScreen
 from .file_picker_screen import FilePickerScreen
 from .help_screen import HelpScreen
-from .key_bar import KeyBar
 from .notes_screen import NotesScreen
 from .reader_screen import ReaderScreen
 from .shelf_screen import ShelfScreen
@@ -49,12 +48,15 @@ class LibraryScreen(Screen):
         Binding("up", "cursor_up", "Вверх"),
         Binding("left", "cursor_left", "Влево"),
         Binding("right", "cursor_right", "Вправо"),
+        Binding("h", "focus_shelves", "Полки"),
+        Binding("l", "focus_grid", "Карточки"),
         Binding("?", "show_help", "Помощь"),
         Binding("q", "quit_app", "Выход"),
     ]
 
     SORT_KEYS = [("title", "названию"), ("author", "автору"), ("year", "году")]
-    CARD_W = 24
+    CARD_W = 22
+    SIDEBAR_W = 20
 
     def __init__(self, db: LibraryDB, import_dir: str | None = None):
         super().__init__()
@@ -69,24 +71,32 @@ class LibraryScreen(Screen):
         self._current_shelf_id: int | None = None
         self._current_shelf_name: str = ""
         self._last_cols = 0
+        self._focus = "grid"
+        self._shelves: list[tuple[int | None, str, int]] = []
+        self._shelf_index = 0
 
     def compose(self) -> ComposeResult:
         with Horizontal(id="main_row"):
-            yield KeyBar(id="keybar")
+            with Vertical(id="sidebar"):
+                yield Static("▦ ПОЛКИ", id="shelves_title")
+                yield Static(id="shelves")
             with Vertical(id="main_column"):
                 yield Static(id="headline")
+                yield Static(classes="divider")
                 yield TabBar(on_open=self._open_from_tab, on_add=self.action_add_book)
+                yield Static(classes="divider")
                 with VerticalScroll(id="cards_scroll"):
                     yield Static(id="cards")
+                yield Static(classes="divider")
                 with Horizontal(id="search_row"):
                     yield Input(placeholder="Поиск по названию, автору, описанию…", id="search")
         yield StatusBar(id="statusbar")
 
     def on_mount(self) -> None:
+        self._refresh_shelves()
         self._refresh_cards()
         self._update_tabs()
         self.set_interval(1.0, self._timer_tick)
-        self.query_one("#keybar", KeyBar).set_keys(KeyBar.library())
         if self.import_dir_on_start:
             self._import_dir(self.import_dir_on_start)
         else:
@@ -104,16 +114,16 @@ class LibraryScreen(Screen):
             if shelf is None:
                 self._current_shelf_id = None
                 self._current_shelf_name = ""
+        self._refresh_shelves()
         self._refresh_cards()
         self._update_tabs()
-        self.query_one("#keybar", KeyBar).set_keys(KeyBar.library())
 
     def _cols(self) -> int:
-        avail = max(20, self.size.width - KeyBar.WIDTH - 4)
+        avail = max(20, self.size.width - self.SIDEBAR_W - 4)
         return max(1, avail // (self.CARD_W + 1))
 
     def _grid_width(self) -> int:
-        return max(20, self.size.width - KeyBar.WIDTH - 4)
+        return max(20, self.size.width - self.SIDEBAR_W - 4)
 
     def _sorted(self, query: str = "") -> list:
         if self._current_shelf_id is not None:
@@ -175,12 +185,12 @@ class LibraryScreen(Screen):
             ]
             row_w = len(frames) * (self.CARD_W + 1) - 1
             pad = max(0, (width - row_w) // 2)
-            for r in range(7):
+            for r in range(6):
                 out.append(" " * pad + " ".join(fr[r] for fr in frames))
         cards.update("\n".join(out))
         row = self._visible.index(self._selected_id) // cols
         self.query_one("#cards_scroll", VerticalScroll).scroll_to(
-            y=row * 8, animate=False
+            y=row * 7, animate=False
         )
 
     def _card_lines(
@@ -198,34 +208,53 @@ class LibraryScreen(Screen):
             except ValueError:
                 pass
         authors = raw_authors.strip()
-        c1 = title[:11].upper().center(w)
-        c2 = (title[11:22].upper() if len(title) > 11 else "").center(w)
+        c1 = title[:10].upper().center(w)
+        c2 = (title[10:20].upper() if len(title) > 10 else "").center(w)
         t_line = title if len(title) <= w else title[: w - 1] + "…"
-        a_line = authors if len(authors) <= w - 1 else authors[: w - 2] + "…"
         chapters = json.loads(row["chapters"])
         total = sum(c["n"] for c in chapters)
         if total:
             done = sum(c["n"] for c in chapters[: row["chapter"] or 0]) + (row["paragraph"] or 0)
-            pct = round(done * 100 / total)
-            bar = "▰" * round(pct / 10) + "▱" * (10 - round(pct / 10))
-            p_text = f"{bar} {pct}%"
-            progress = f"[{accent}]{bar}[/] [#8a8a8a]{pct}%[/]"
+            pct = f"{round(done * 100 / total)}%"
         else:
-            p_text = "-"
-            progress = "[#8a8a8a]-[/]"
-        flag = f"[{bright}]⚑[/]" if bookmarks else ""
+            pct = "-"
+        flag = f"[{bright}]⚑[/] " if bookmarks else ""
         badge = f"[{bright}] ⏵[/]" if is_last else ""
-        a_pad = w - len(a_line) - 1
-        p_pad = w - len(p_text) - (2 if is_last else 0)
+        right_len = (2 if bookmarks else 0) + len(pct) + (2 if is_last else 0)
+        a_max = w - right_len - 1
+        a_line = authors if len(authors) <= a_max else authors[: a_max - 1] + "…"
+        a_pad = w - len(a_line) - right_len
         return [
             f"[{border}]╭{'─' * w}╮[/]",
             f"[{border}]│[/][on {bg}][{bright}]{c1}[/][/][{border}]│[/]",
             f"[{border}]│[/][on {bg}][{accent}]{c2}[/][/][{border}]│[/]",
             f"[{border}]│[/][on {inner}][bold][#c8c8c8]{t_line.ljust(w)}[/][/][/][{border}]│[/]",
-            f"[{border}]│[/][on {inner}][#8a8a8a]{a_line.ljust(a_pad)}[/][/]{flag}[{border}]│[/]",
-            f"[{border}]│[/][on {inner}]{progress}{' ' * p_pad}{badge}[/][{border}]│[/]",
+            f"[{border}]│[/][on {inner}][#8a8a8a]{a_line.ljust(a_pad)}[/][/]{flag}[{accent}]{pct}[/]{badge}[{border}]│[/]",
             f"[{border}]╰{'─' * w}╯[/]",
         ]
+
+    def _refresh_shelves(self) -> None:
+        accent, bright, bg, _dim = self.app.accent_colors()
+        shelves = self.db.all_shelves()
+        total = len(self.db.all_books())
+        self._shelves = [(None, "Все книги", total)] + [
+            (int(s["id"]), s["name"], s["n"]) for s in shelves
+        ]
+        if self._shelf_index >= len(self._shelves):
+            self._shelf_index = 0
+        current = self._current_shelf_id
+        lines = []
+        for i, (sid, name, n) in enumerate(self._shelves):
+            mark = "▸" if sid == current else " "
+            label = name if len(name) <= 13 else name[:12] + "…"
+            text = f"{mark} {label:<11}{n:>4}"
+            if self._focus == "shelves" and i == self._shelf_index:
+                lines.append(f"[{bright} on {bg}]{text}[/]")
+            elif sid == current:
+                lines.append(f"[{accent}]{text}[/]")
+            else:
+                lines.append(f"[#8a8a8a]{text}[/]")
+        self.query_one("#shelves", Static).update("\n".join(lines))
 
     def _refresh_headline(self) -> None:
         accent, bright, _bg, _dim = self.app.accent_colors()
@@ -268,6 +297,12 @@ class LibraryScreen(Screen):
         return int(row["id"]) if row else None
 
     def _move_cursor(self, delta: int) -> None:
+        if self._focus == "shelves":
+            if not self._shelves:
+                return
+            self._shelf_index = (self._shelf_index + delta) % len(self._shelves)
+            self._refresh_shelves()
+            return
         if not self._visible:
             return
         if self._selected_id not in self._visible:
@@ -277,16 +312,35 @@ class LibraryScreen(Screen):
         self._refresh_cards()
 
     def action_cursor_down(self) -> None:
-        self._move_cursor(self._cols())
+        self._move_cursor(self._cols() if self._focus == "grid" else 1)
 
     def action_cursor_up(self) -> None:
-        self._move_cursor(-self._cols())
+        self._move_cursor(-(self._cols() if self._focus == "grid" else 1))
 
     def action_cursor_left(self) -> None:
         self._move_cursor(-1)
 
     def action_cursor_right(self) -> None:
         self._move_cursor(1)
+
+    def action_focus_shelves(self) -> None:
+        self._focus = "shelves"
+        self._refresh_shelves()
+
+    def action_focus_grid(self) -> None:
+        self._focus = "grid"
+        self._refresh_shelves()
+
+    def action_open_shelf(self) -> None:
+        if not self._shelves:
+            return
+        shelf_id, name, _n = self._shelves[self._shelf_index]
+        if shelf_id != self._current_shelf_id:
+            self._current_shelf_id = shelf_id
+            self._current_shelf_name = name if shelf_id is not None else ""
+            self._selected_id = None
+            self._refresh_cards()
+        self._refresh_shelves()
 
 
     def action_add_book(self) -> None:
@@ -328,6 +382,9 @@ class LibraryScreen(Screen):
         self._scan_books_dir()
 
     async def action_open_book(self) -> None:
+        if self._focus == "shelves":
+            self.action_open_shelf()
+            return
         book_id = self._current_book_id()
         if book_id is None:
             self.app.notify("Нет выбранной книги", severity="warning")
@@ -434,7 +491,11 @@ class LibraryScreen(Screen):
             self._current_shelf_name = shelf["name"] if shelf else ""
             if self._current_shelf_name:
                 self.app.notify(f"Полка «{self._current_shelf_name}»", severity="information")
+        for i, (sid, _n, _c) in enumerate(self._shelves):
+            if sid == self._current_shelf_id:
+                self._shelf_index = i
         self._refresh_cards()
+        self._refresh_shelves()
 
     def action_put_on_shelf(self) -> None:
         book_id = self._current_book_id()
@@ -516,7 +577,7 @@ class LibraryScreen(Screen):
         if not self._visible:
             return
         cols = self._cols()
-        start = event.offset.y // 8 * cols
+        start = event.offset.y // 7 * cols
         n = min(cols, len(self._visible) - start)
         if n <= 0:
             return
@@ -529,7 +590,18 @@ class LibraryScreen(Screen):
         if col >= n:
             return
         self._selected_id = self._visible[start + col]
+        self._focus = "grid"
         await self.action_open_book()
+
+    @on(events.Click, "#shelves")
+    def _on_shelves_clicked(self, event: events.Click) -> None:
+        if not self._shelves:
+            return
+        row = event.offset.y
+        if 0 <= row < len(self._shelves):
+            self._shelf_index = row
+            self._focus = "shelves"
+            self.action_open_shelf()
 
 
     @work(thread=True)

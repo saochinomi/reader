@@ -101,6 +101,28 @@ Horizontal#main_row {
     height: 1fr;
 }
 
+Vertical#sidebar {
+    width: 20;
+    border-right: solid $accent;
+    padding: 1 1;
+}
+
+Static#shelves_title {
+    height: 1;
+    color: $accent;
+    text-style: bold;
+    margin-bottom: 1;
+}
+
+Static#shelves {
+    height: 1fr;
+}
+
+.divider {
+    height: 1;
+    background: $accent-dim;
+}
+
 Vertical#main_column {
     height: 1fr;
 }

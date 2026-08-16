@@ -134,8 +134,8 @@ class TestUi:
                         break
                 assert any(b.id and b.id.startswith("tab-") for b in tabs.query(Button))
 
-                keybar = lib.query_one("#keybar", KeyBar)
-                assert "+" in keybar.content and "⇅" in keybar.content
+                shelves = lib.query_one("#shelves", Static)
+                assert "Все книги" in shelves.content
                 status_center = "книг: 1" in status.content
 
         asyncio.run(scenario())
@@ -161,12 +161,8 @@ class TestUi:
                 assert app._accent_name == "blue"
                 assert app.theme == "reader-blue"
                 assert isinstance(app.screen, LibraryScreen)
-                keybar = lib.query_one("#keybar", KeyBar)
-                for _ in range(50):
-                    await pilot.pause()
-                    if "#82aaff" in keybar.content:
-                        break
-                assert "#82aaff" in keybar.content
+                headline = lib.query_one("#headline", Static)
+                assert "#82aaff" in headline.content
 
         asyncio.run(scenario())
 
@@ -326,11 +322,9 @@ class TestUi:
             async with app.run_test(size=(100, 40)) as pilot:
                 lib = app.screen
                 main_row = lib.query_one("#main_row")
-                assert main_row.children[0].id == "keybar"
-                keybar = lib.query_one("#keybar", KeyBar)
-                assert "\n" in keybar.content  # type: ignore
-                assert "↵" in keybar.content and "⎋" not in keybar.content  # type: ignore
-                assert "закладка" not in keybar.content  # type: ignore
+                assert main_row.children[0].id == "sidebar"
+                shelves = lib.query_one("#shelves", Static)
+                assert "Все книги" in shelves.content
 
                 book = tmp_path / "book.fb2"
                 write_fixture(book, build_fb2())
@@ -1022,6 +1016,103 @@ class TestUi:
                 assert lib._visible == [id1, id2]
                 cards = lib.query_one("#cards", Static)
                 assert "Зетта" in cards.content
+
+        asyncio.run(scenario())
+
+    def test_shelves_sidebar(self, tmp_path: Path):
+        _home(tmp_path)
+        b1 = tmp_path / "a.fb2"
+        b2 = tmp_path / "b.fb2"
+        write_fixture(b1, build_fb2(title="Альфа"))
+        write_fixture(b2, build_fb2(title="Бета"))
+
+        async def scenario():
+            from reader.library import import_book
+
+            app = ReaderApp(tmp_path / "lib.db", splash=False)
+            async with app.run_test(size=(100, 40)) as pilot:
+                id1 = import_book(app.db, b1)
+                id2 = import_book(app.db, b2)
+                sid = app.db.create_shelf("Фантастика")
+                app.db.add_book_to_shelf(sid, id1)
+                lib = app.screen
+                lib._refresh_shelves()
+                shelves = lib.query_one("#shelves", Static)
+                assert "Все книги" in shelves.content
+                assert "Фантастика" in shelves.content
+
+                await pilot.press("h")
+                await pilot.pause()
+                assert lib._focus == "shelves"
+                await pilot.press("j")
+                await pilot.pause()
+                assert lib._shelf_index == 1
+                await pilot.press("enter")
+                await pilot.pause()
+                assert lib._current_shelf_id == sid
+                assert lib._visible == [id1]
+                await pilot.press("l")
+                await pilot.pause()
+                assert lib._focus == "grid"
+                await pilot.press("j")
+                await pilot.pause()
+                assert lib._selected_id == id1
+                await pilot.press("enter")
+                await pilot.pause()
+                assert isinstance(app.screen, ReaderScreen)
+                assert app.screen.book_id == id1
+
+        asyncio.run(scenario())
+
+    def test_click_shelf(self, tmp_path: Path):
+        _home(tmp_path)
+        b1 = tmp_path / "a.fb2"
+        b2 = tmp_path / "b.fb2"
+        write_fixture(b1, build_fb2(title="Альфа"))
+        write_fixture(b2, build_fb2(title="Бета"))
+
+        async def scenario():
+            from reader.library import import_book
+
+            app = ReaderApp(tmp_path / "lib.db", splash=False)
+            async with app.run_test(size=(100, 40)) as pilot:
+                id1 = import_book(app.db, b1)
+                import_book(app.db, b2)
+                sid = app.db.create_shelf("Фантастика")
+                app.db.add_book_to_shelf(sid, id1)
+                lib = app.screen
+                lib._refresh_shelves()
+                shelves = lib.query_one("#shelves", Static)
+                await pilot.click(shelves, offset=(2, 1))
+                await pilot.pause()
+                assert lib._current_shelf_id == sid
+                assert lib._visible == [id1]
+                await pilot.click(shelves, offset=(2, 0))
+                await pilot.pause()
+                assert lib._current_shelf_id is None
+                assert len(lib._visible) == 2
+
+        asyncio.run(scenario())
+
+    def test_white_accent(self, tmp_path: Path):
+        _home(tmp_path)
+
+        async def scenario():
+            app = ReaderApp(tmp_path / "lib.db", splash=False)
+            async with app.run_test(size=(100, 40)) as pilot:
+                await pilot.press("c")
+                await pilot.pause()
+                from reader.ui.color_screen import ColorScreen
+
+                assert isinstance(app.screen, ColorScreen)
+                for _ in range(7):
+                    await pilot.press("down")
+                await pilot.press("enter")
+                await pilot.pause()
+                assert app._accent_name == "white"
+                assert app.theme == "reader-white"
+                headline = app.screen.query_one("#headline", Static)
+                assert "#ffffff" in headline.content
 
         asyncio.run(scenario())
 
