@@ -60,6 +60,7 @@ class ReaderScreen(Screen):
         self._sel_end: tuple[int, int, int] | None = None
         self._sel_end_y: int | None = None
         self._sel_start_ly: int | None = None
+        self._sel_start_lx: int | None = None
         self._sel_text = ""
         self._mouse_sel = False
 
@@ -277,6 +278,14 @@ class ReaderScreen(Screen):
         col = max(0, min(int(x) - 1, len(line)))
         return ci, pi, off + col
 
+    def _line_end(self, row: int) -> tuple[int, int, int] | None:
+        assert self.renderer is not None
+        page = self.renderer.render(self.page_index)
+        if row < 0 or row >= len(page.meta):
+            return None
+        ci, pi, off = page.meta[row]
+        return ci, pi, off + len(page.lines[row])
+
     def on_mouse_down(self, event: events.MouseDown) -> None:
         if event.button != 1:
             return
@@ -291,6 +300,7 @@ class ReaderScreen(Screen):
         self._sel_end = pos
         self._sel_end_y = int(event.screen_y - region.y)
         self._sel_start_ly = self._sel_end_y
+        self._sel_start_lx = int(event.screen_x - region.x)
         self._sel_text = ""
         self._mouse_sel = True
 
@@ -316,14 +326,17 @@ class ReaderScreen(Screen):
         region = self.query_one("#content", Static).region
         up_pos = self._mouse_pos(event.screen_x - region.x, event.screen_y - region.y)
         self._mlog(f"up b={event.button} sx={event.screen_x} sy={event.screen_y} reg={region} lx={event.screen_x - region.x} ly={event.screen_y - region.y} row={up_pos} end_y={self._sel_end_y} end={self._sel_end}")
-        if region.contains(event.screen_x, event.screen_y) and self._sel_end_y is not None:
+        if region.contains(event.screen_x, event.screen_y) and self._sel_end_y is not None and self._sel_start_ly is not None:
             y = int(event.screen_y - region.y)
-            if self._sel_start_ly is not None and y == self._sel_start_ly + 1 and self._sel_end_y <= self._sel_start_ly + 1:
-                assert self.renderer is not None
-                page = self.renderer.render(self.page_index)
-                if self._sel_start_ly < len(page.meta):
-                    ci, pi, off = page.meta[self._sel_start_ly]
-                    self._sel_end = (ci, pi, off + len(page.lines[self._sel_start_ly]))
+            x = int(event.screen_x - region.x)
+            if y == self._sel_start_ly and self._sel_start_lx is not None and abs(x - self._sel_start_lx) <= 3:
+                self._sel_end = self._line_end(self._sel_start_ly) or self._sel_end
+            elif y == self._sel_start_ly and abs(y - self._sel_end_y) <= 2:
+                pos = self._mouse_pos(event.screen_x - region.x, event.screen_y - region.y)
+                if pos is not None:
+                    self._sel_end = pos
+            elif y == self._sel_start_ly + 1 and self._sel_end_y <= self._sel_start_ly + 1:
+                self._sel_end = self._line_end(self._sel_start_ly) or self._sel_end
             elif abs(y - self._sel_end_y) <= 2:
                 pos = self._mouse_pos(event.screen_x - region.x, event.screen_y - region.y)
                 if pos is not None:

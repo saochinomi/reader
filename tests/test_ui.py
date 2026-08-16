@@ -599,10 +599,11 @@ class TestUi:
 
         asyncio.run(scenario())
 
-    def test_click_without_drag_no_window(self, tmp_path: Path):
+    def test_click_selects_whole_line(self, tmp_path: Path):
         _home(tmp_path)
-        book = tmp_path / "book.fb2"
-        write_fixture(book, build_fb2())
+        book = tmp_path / "big.txt"
+        big = ("Абзац книги. Ещё предложение текста.\n\n" * 100).encode("utf-8")
+        write_fixture(book, big)
 
         async def scenario():
             from reader.library import import_book
@@ -612,11 +613,48 @@ class TestUi:
                 book_id = import_book(app.db, book)
                 app.push_screen(ReaderScreen(app.db, book_id))
                 await pilot.pause()
+                reader = app.screen
                 await pilot.mouse_down("#content", offset=(1, 0))
                 await pilot.mouse_up("#content", offset=(1, 0))
                 await pilot.pause()
+                assert app.screen.__class__.__name__ == "HighlightColorScreen"
+                page = reader.renderer.render(reader.page_index)
+                ci, pi, off = page.meta[0]
+                assert reader._sel_end == (ci, pi, off + len(page.lines[0]))
+                await pilot.press("enter")
+                await pilot.pause()
                 assert isinstance(app.screen, ReaderScreen)
-                assert app.db.highlights(book_id) == []
+                hs = app.db.highlights(book_id)
+                assert len(hs) == 1
+                assert hs[0]["text"] == page.lines[0]
+
+        asyncio.run(scenario())
+
+    def test_drag_piece_within_line(self, tmp_path: Path):
+        _home(tmp_path)
+        book = tmp_path / "big.txt"
+        big = ("Абзац книги. Ещё предложение текста.\n\n" * 100).encode("utf-8")
+        write_fixture(book, big)
+
+        async def scenario():
+            from reader.library import import_book
+
+            app = ReaderApp(tmp_path / "lib.db", splash=False)
+            async with app.run_test(size=(100, 40)) as pilot:
+                book_id = import_book(app.db, book)
+                app.push_screen(ReaderScreen(app.db, book_id))
+                await pilot.pause()
+                reader = app.screen
+                await pilot.mouse_down("#content", offset=(1, 0))
+                await pilot.mouse_up("#content", offset=(25, 0))
+                await pilot.pause()
+                assert app.screen.__class__.__name__ == "HighlightColorScreen"
+                page = reader.renderer.render(reader.page_index)
+                ci, pi, off = page.meta[0]
+                assert reader._sel_end == (ci, pi, off + 24)
+                await pilot.press("escape")
+                await pilot.pause()
+                assert isinstance(app.screen, ReaderScreen)
 
         asyncio.run(scenario())
 
