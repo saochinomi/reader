@@ -61,8 +61,22 @@ class LibraryDB:
                 book_id INTEGER NOT NULL REFERENCES books(id) ON DELETE CASCADE,
                 PRIMARY KEY (shelf_id, book_id)
             );
+            CREATE TABLE IF NOT EXISTS highlights (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                book_id INTEGER NOT NULL REFERENCES books(id) ON DELETE CASCADE,
+                chapter_s INTEGER NOT NULL,
+                paragraph_s INTEGER NOT NULL,
+                offset_s INTEGER NOT NULL DEFAULT 0,
+                chapter_e INTEGER NOT NULL,
+                paragraph_e INTEGER NOT NULL,
+                offset_e INTEGER NOT NULL DEFAULT 0,
+                color TEXT NOT NULL,
+                text TEXT NOT NULL DEFAULT '',
+                created_at INTEGER NOT NULL DEFAULT (unixepoch())
+            );
             CREATE INDEX IF NOT EXISTS idx_bookmarks_book ON bookmarks(book_id);
             CREATE INDEX IF NOT EXISTS idx_shelf_books_shelf ON shelf_books(shelf_id);
+            CREATE INDEX IF NOT EXISTS idx_highlights_book ON highlights(book_id);
             """
         )
         self._conn.commit()
@@ -205,7 +219,6 @@ class LibraryDB:
         )
         return cur.fetchall()
 
-    # --- кэш разобранных книг ---
 
     def get_parsed_cache(self, hash_: str) -> bytes | None:
         cur = self._conn.execute(
@@ -238,7 +251,6 @@ class LibraryDB:
             or like in r["description"].casefold()
         ]
 
-    # --- полки ---
 
     def create_shelf(self, name: str) -> int:
         cur = self._conn.execute(
@@ -293,3 +305,52 @@ class LibraryDB:
             (shelf_id, book_id),
         )
         self._conn.commit()
+
+
+    def highlights(self, book_id: int) -> list[sqlite3.Row]:
+        cur = self._conn.execute(
+            """
+            SELECT * FROM highlights WHERE book_id = ?
+            ORDER BY chapter_s, paragraph_s, offset_s
+            """,
+            (book_id,),
+        )
+        return cur.fetchall()
+
+    def add_highlight(
+        self,
+        book_id: int,
+        chapter_s: int,
+        paragraph_s: int,
+        offset_s: int,
+        chapter_e: int,
+        paragraph_e: int,
+        offset_e: int,
+        color: str,
+        text: str,
+    ) -> None:
+        self._conn.execute(
+            """
+            INSERT INTO highlights
+                (book_id, chapter_s, paragraph_s, offset_s,
+                 chapter_e, paragraph_e, offset_e, color, text)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (book_id, chapter_s, paragraph_s, offset_s,
+             chapter_e, paragraph_e, offset_e, color, text),
+        )
+        self._conn.commit()
+
+    def remove_highlight(self, highlight_id: int) -> None:
+        self._conn.execute("DELETE FROM highlights WHERE id = ?", (highlight_id,))
+        self._conn.commit()
+
+    def highlights_books(self) -> list[sqlite3.Row]:
+        cur = self._conn.execute(
+            """
+            SELECT b.id, b.title, COUNT(h.id) AS n
+            FROM books b JOIN highlights h ON h.book_id = b.id
+            GROUP BY b.id ORDER BY b.title COLLATE NOCASE
+            """
+        )
+        return cur.fetchall()

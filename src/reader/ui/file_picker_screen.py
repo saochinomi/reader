@@ -51,7 +51,7 @@ class FilePickerScreen(Screen[Path]):
         self.last_dir = path
         self.query_one("#path", Static).update(str(path))
         self.query_one("#status", Static).update(
-            "↑/↓ — навигация, Enter — войти/выбрать, h — домой, b — ~/Books, l — последняя папка, Esc — назад"
+            "↑/↓ - навигация, Enter - войти/выбрать, h - домой, b - ~/Books, l - последняя папка, Esc - назад"
         )
 
     def _goto(self, path: Path) -> None:

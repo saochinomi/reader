@@ -34,7 +34,7 @@ class ShelfScreen(Screen[int | None]):
         if not self.pick:
             ol.add_option(Option("▸ Все книги", id="all"))
         for row in self.app.db.all_shelves():
-            ol.add_option(Option(f"{row['name']} — {row['n']}", id=f"s{row['id']}"))
+            ol.add_option(Option(f"{row['name']} - {row['n']}", id=f"s{row['id']}"))
         ol.add_option(Option("＋ Новая полка", id="new"))
         ol.focus()
 

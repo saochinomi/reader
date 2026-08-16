@@ -74,7 +74,7 @@ def _parse_fb2(root: etree._Element) -> ParsedBook:
     for body in [e for e in root.iter() if _local(e) == "body"]:
         book.chapters.extend(extract_chapters(body))
 
-    # Если глав нет — берём все абзацы в одну главу
+    # Если глав нет - берём все абзацы в одну главу
     if not book.chapters:
         paras = [p.text.strip() for p in root.iter() if _local(p) == "p" and p.text and p.text.strip()]
         if paras:

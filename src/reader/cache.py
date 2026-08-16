@@ -14,7 +14,7 @@ def load_or_parse(db: LibraryDB, path: Path) -> ParsedBook:
     if blob is not None:
         try:
             book = pickle.loads(blob)
-        except Exception:  # noqa: BLE001 — повреждённый кэш пересоздаём
+        except Exception:  # noqa: BLE001 - повреждённый кэш пересоздаём
             book = None
         if isinstance(book, ParsedBook) and book.chapters:
             return book

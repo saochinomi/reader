@@ -3,6 +3,7 @@ from __future__ import annotations
 import time
 from bisect import bisect_left, bisect_right
 
+from rich.markup import escape
 from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
@@ -15,7 +16,10 @@ from ..renderer import BookRenderer
 from .bookmarks_screen import BookmarksScreen
 from .color_screen import ColorScreen
 from .help_screen import HelpScreen
+from .highlight_color_screen import HighlightColorScreen
+from .highlight_colors import HIGHLIGHT_COLORS, PREVIEW_BG
 from .key_bar import KeyBar
+from .notes_screen import NotesScreen
 from .status_bar import StatusBar
 from .timer_screen import TimerScreen
 
@@ -32,6 +36,8 @@ class ReaderScreen(Screen):
         Binding("[", "prev_bookmark", "Пред. закл."),
         Binding("]", "next_bookmark", "След. закл."),
         Binding("s", "add_bookmark", "Закладка"),
+        Binding("m", "mark", "Выделить"),
+        Binding("H", "show_notes", "Заметки"),
         Binding("b", "show_bookmarks", "Закладки"),
         Binding("f", "cycle_width", "Ширина"),
         Binding("c", "choose_color", "Цвет"),
@@ -40,7 +46,7 @@ class ReaderScreen(Screen):
         Binding("escape,q", "back", "Назад"),
     ]
 
-    def __init__(self, db: LibraryDB, book_id: int, jump_to: tuple[int, int] | None = None):
+    def __init__(self, db: LibraryDB, book_id: int, jump_to: tuple[int, int] | tuple[int, int, int] | None = None):
         super().__init__()
         self.db = db
         self.book_id = book_id
@@ -50,6 +56,7 @@ class ReaderScreen(Screen):
         self.page_index = 0
         self.width_mode = 0
         self._highlight_until = 0.0
+        self._mark: tuple[int, int, int] | None = None
 
     def compose(self) -> ComposeResult:
         with Horizontal(id="main_row"):
@@ -67,7 +74,10 @@ class ReaderScreen(Screen):
         self._rebuild_renderer()
         resumed = self.jump_to is not None
         if self.jump_to is not None:
-            self.page_index = self.renderer.locate(*self.jump_to)
+            if len(self.jump_to) == 3:
+                self.page_index = self.renderer.locate_offset(*self.jump_to)
+            else:
+                self.page_index = self.renderer.locate(*self.jump_to)
         else:
             row = self.db.get_progress(self.book_id)
             if row is not None:
@@ -104,15 +114,60 @@ class ReaderScreen(Screen):
         page = self.renderer.render(self.page_index)
         _acc, bright, _bg, _dim = self.app.accent_colors()
         title = self.book.chapters[page.chapter_index].title or "…"
-        self.query_one("#chapter", Static).update(f"[bold]{bright}─── {title} ───[/bold]")
+        self.query_one("#chapter", Static).update(f"[bold]{bright}- {title} -[/bold]")
         lines = page.lines if page.lines else ["…"]
+        if lines and page.meta:
+            lines = self._colorize(lines, page.meta)
         if (highlight if highlight is not None else self._highlighted()) and lines:
-            from rich.markup import escape
-
             lines = [f"[reverse]{escape(lines[0])}[/reverse]"] + lines[1:]
         self.query_one("#content", Static).update("\n".join(lines))
         self._refresh_status(page)
         self._save_progress(page.chapter_index, page.paragraph_index)
+
+    def _colorize(self, lines: list[str], meta: list[tuple[int, int, int]]) -> list[str]:
+        ranges: list[tuple[tuple, tuple, str]] = []
+        for h in self.db.highlights(self.book_id):
+            markup = HIGHLIGHT_COLORS.get(h["color"], PREVIEW_BG)
+            ranges.append(
+                (
+                    (h["chapter_s"], h["paragraph_s"], h["offset_s"]),
+                    (h["chapter_e"], h["paragraph_e"], h["offset_e"]),
+                    markup,
+                )
+            )
+        if self._mark is not None and meta:
+            s = self._mark
+            mci, mpi, moff = meta[0]
+            e = (mci, mpi, moff + len(lines[0]))
+            if e < s:
+                s, e = e, s
+            if e > s:
+                ranges.append((s, e, PREVIEW_BG))
+        if not ranges:
+            return [escape(line) for line in lines]
+        out: list[str] = []
+        for line, (mci, mpi, moff) in zip(lines, meta):
+            out.append(self._paint(line, (mci, mpi, moff), ranges))
+        return out
+
+    @staticmethod
+    def _paint(text: str, pos: tuple[int, int, int], ranges) -> str:
+        end = pos[2] + len(text)
+        for (cs, ps, os), (ce, pe, oe), markup in ranges:
+            if (cs, ps, os) >= (pos[0], pos[1], end):
+                continue
+            if (ce, pe, oe) <= pos:
+                continue
+            start = max(os, pos[2])
+            stop = min(oe, end)
+            if stop <= start:
+                continue
+            ls, le = start - pos[2], stop - pos[2]
+            return (
+                f"{escape(text[:ls])}[{markup}]{escape(text[ls:le])}[/]"
+                f"{escape(text[le:])}"
+            )
+        return escape(text)
 
     def _refresh_status(self, page=None) -> None:
         assert self.renderer is not None
@@ -141,7 +196,6 @@ class ReaderScreen(Screen):
             self._rebuild_renderer()
             self._draw()
 
-    # --- действия ---
 
     def action_next_page(self) -> None:
         if self.renderer and self.page_index < self.renderer.page_count() - 1:
@@ -179,6 +233,79 @@ class ReaderScreen(Screen):
         self.db.add_bookmark(self.book_id, page.chapter_index, page.paragraph_index, note)
         self.app.notify("Закладка добавлена", severity="information")
 
+    def action_mark(self) -> None:
+        assert self.renderer is not None
+        page = self.renderer.render(self.page_index)
+        if self._mark is None:
+            if not page.meta:
+                return
+            self._mark = page.meta[0]
+            self.app.notify("Выделение: m - закончить, Esc - отмена", severity="information")
+            self._draw()
+            return
+        start = self._mark
+        self._mark = None
+        if not page.meta:
+            return
+        mci, mpi, moff = page.meta[0]
+        end = (mci, mpi, moff + (len(page.lines[0]) if page.lines else 0))
+        if end <= start:
+            self.app.notify("Выделение слишком короткое", severity="warning")
+            self._draw()
+            return
+        text = self._collect_text(start, end)
+        self.app.push_screen(
+            HighlightColorScreen(),
+            lambda color: self._on_highlight_color(color, start, end, text),
+        )
+
+    def _collect_text(self, start: tuple[int, int, int], end: tuple[int, int, int]) -> str:
+        assert self.book is not None
+        parts: list[str] = []
+        for ci, pi, t in self.book.paragraphs():
+            if (ci, pi) < (start[0], start[1]) or (ci, pi) > (end[0], end[1]):
+                continue
+            s = start[2] if (ci, pi) == (start[0], start[1]) else 0
+            e = end[2] if (ci, pi) == (end[0], end[1]) else len(t)
+            if s < e:
+                parts.append(t[s:e])
+        text = " ".join(parts).strip()
+        return text if len(text) <= 200 else text[:197] + "…"
+
+    def _on_highlight_color(
+        self,
+        color: str | None,
+        start: tuple[int, int, int],
+        end: tuple[int, int, int],
+        text: str,
+    ) -> None:
+        if color is None:
+            self._draw()
+            return
+        self.db.add_highlight(self.book_id, *start, *end, color, text)
+        self.app.notify(f"Заметка добавлена ({color})", severity="information")
+        self._draw()
+
+    def action_show_notes(self) -> None:
+        assert self.renderer is not None
+        highlights = self.db.highlights(self.book_id)
+        if not highlights:
+            self.app.notify("Заметок нет (m - выделить текст)", severity="information")
+            return
+        self.app.push_screen(
+            NotesScreen(self.book_id), self._on_note_selected
+        )
+
+    def _on_note_selected(self, result: tuple[int, int, int, int] | None) -> None:
+        if result is None:
+            return
+        assert self.renderer is not None
+        book_id, chapter, paragraph, offset = result
+        if book_id != self.book_id:
+            return
+        self.page_index = self.renderer.locate_offset(chapter, paragraph, offset)
+        self._draw()
+
     def _jump_to_bookmark(self, pos: tuple[int, int], direction: int) -> None:
         assert self.renderer is not None
         marks = sorted(
@@ -186,7 +313,7 @@ class ReaderScreen(Screen):
             key=lambda m: (m[1], m[2]),
         )
         if not marks:
-            self.app.notify("Закладок нет (s — добавить)", severity="warning")
+            self.app.notify("Закладок нет (s - добавить)", severity="warning")
             return
         positions = [(m[1], m[2]) for m in marks]
         index = bisect_right(positions, pos) if direction > 0 else bisect_left(positions, pos) - 1
@@ -203,7 +330,7 @@ class ReaderScreen(Screen):
             (bm["note"] or "…" for bm in self.db.bookmarks(self.book_id) if bm["id"] == bookmark_id),
             "…",
         )
-        self.app.notify(f"Закладка: гл. {chapter + 1} — {note}")
+        self.app.notify(f"Закладка: гл. {chapter + 1} - {note}")
 
     def action_next_bookmark(self) -> None:
         assert self.renderer is not None
@@ -219,7 +346,7 @@ class ReaderScreen(Screen):
         assert self.renderer is not None
         bookmarks = self.db.bookmarks(self.book_id)
         if not bookmarks:
-            self.app.notify("Закладок нет (s — добавить)", severity="information")
+            self.app.notify("Закладок нет (s - добавить)", severity="information")
             return
         self.app.push_screen(
             BookmarksScreen(self.book_id, bookmarks, self._on_bookmark_deleted),
@@ -254,4 +381,8 @@ class ReaderScreen(Screen):
             self._draw()
 
     def action_back(self) -> None:
+        if self._mark is not None:
+            self._mark = None
+            self._draw()
+            return
         self.app.pop_screen()

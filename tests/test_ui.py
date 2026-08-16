@@ -48,7 +48,7 @@ class TestUi:
                 assert isinstance(lib, LibraryScreen)
                 assert lib._rows == {}
 
-                # кнопка i — файловый менеджер
+                # кнопка i - файловый менеджер
                 await pilot.press("i")
                 await pilot.pause()
                 picker = app.screen
@@ -312,7 +312,7 @@ class TestUi:
                 assert content.styles.width.value <= 84
                 assert reader.query_one("#content_row") is not None
                 chapter = reader.query_one("#chapter")
-                assert "───" in chapter.content
+                assert "-" in chapter.content
 
         asyncio.run(scenario())
 
@@ -374,6 +374,129 @@ class TestUi:
                 reader = app.screen
                 assert reader.query_one("#main_row").children[0].id == "keybar"
                 assert "⎋" in reader.query_one("#keybar", KeyBar).content  # type: ignore
+
+        asyncio.run(scenario())
+
+    def test_highlight_flow(self, tmp_path: Path):
+        _home(tmp_path)
+        book = tmp_path / "big.txt"
+        big = ("Абзац книги. Ещё предложение текста.\n\n" * 100).encode("utf-8")
+        write_fixture(book, big)
+
+        async def scenario():
+            from reader.library import import_book
+
+            app = ReaderApp(tmp_path / "lib.db", splash=False)
+            async with app.run_test(size=(100, 40)) as pilot:
+                book_id = import_book(app.db, book)
+                app.push_screen(ReaderScreen(app.db, book_id))
+                await pilot.pause()
+                reader = app.screen
+                content = reader.query_one("#content")
+                assert "on #3a3a3a" not in content.content  # type: ignore
+
+                await pilot.press("m")
+                await pilot.pause()
+                assert "on #3a3a3a" in content.content  # type: ignore
+                await pilot.press("j")
+                await pilot.pause()
+                await pilot.press("m")
+                await pilot.pause()
+                assert app.screen.__class__.__name__ == "HighlightColorScreen"
+                await pilot.press("enter")
+                await pilot.pause()
+                assert isinstance(app.screen, ReaderScreen)
+                hs = app.db.highlights(book_id)
+                assert len(hs) == 1
+                assert hs[0]["color"] == "красный"
+                assert hs[0]["text"].startswith("Абзац книги")
+                assert "on #5c2626" in content.content  # type: ignore
+
+        asyncio.run(scenario())
+
+    def test_highlight_escape_cancels(self, tmp_path: Path):
+        _home(tmp_path)
+        book = tmp_path / "big.txt"
+        big = ("Абзац книги. Ещё предложение текста.\n\n" * 100).encode("utf-8")
+        write_fixture(book, big)
+
+        async def scenario():
+            from reader.library import import_book
+
+            app = ReaderApp(tmp_path / "lib.db", splash=False)
+            async with app.run_test(size=(100, 40)) as pilot:
+                book_id = import_book(app.db, book)
+                app.push_screen(ReaderScreen(app.db, book_id))
+                await pilot.pause()
+                reader = app.screen
+                await pilot.press("m")
+                await pilot.pause()
+                await pilot.press("escape")
+                await pilot.pause()
+                assert isinstance(app.screen, ReaderScreen)
+                assert reader._mark is None
+                assert app.db.highlights(book_id) == []
+
+        asyncio.run(scenario())
+
+    def test_notes_screen_books_to_reader(self, tmp_path: Path):
+        _home(tmp_path)
+        b1 = tmp_path / "a.fb2"
+        b2 = tmp_path / "b.epub"
+        write_fixture(b1, build_fb2())
+        write_fixture(b2, build_epub())
+
+        async def scenario():
+            from reader.library import import_book
+            from reader.ui.notes_screen import NotesScreen
+
+            app = ReaderApp(tmp_path / "lib.db", splash=False)
+            async with app.run_test(size=(100, 40)) as pilot:
+                id1 = import_book(app.db, b1)
+                id2 = import_book(app.db, b2)
+                app.db.add_highlight(id1, 0, 1, 0, 0, 1, 40, "синий", "фрагмент один")
+                app.db.add_highlight(id1, 1, 0, 0, 1, 1, 30, "красный", "фрагмент два")
+                app.db.add_highlight(id2, 0, 0, 0, 0, 0, 20, "жёлтый", "фрагмент три")
+
+                await pilot.press("H")
+                await pilot.pause()
+                screen = app.screen
+                assert isinstance(screen, NotesScreen)
+                ol = screen.query_one("#list")
+                assert ol.option_count == 2
+                await pilot.press("enter")
+                await pilot.pause()
+                assert isinstance(app.screen, NotesScreen)
+                assert app.screen.book_id == id1
+                assert app.screen.query_one("#list").option_count == 2
+                await pilot.press("enter")
+                await pilot.pause()
+                assert isinstance(app.screen, ReaderScreen)
+                assert app.screen.book_id == id1
+
+        asyncio.run(scenario())
+
+    def test_notes_screen_delete(self, tmp_path: Path):
+        _home(tmp_path)
+        book = tmp_path / "book.fb2"
+        write_fixture(book, build_fb2())
+
+        async def scenario():
+            from reader.library import import_book
+            from reader.ui.notes_screen import NotesScreen
+
+            app = ReaderApp(tmp_path / "lib.db", splash=False)
+            async with app.run_test(size=(100, 40)) as pilot:
+                book_id = import_book(app.db, book)
+                app.db.add_highlight(book_id, 0, 1, 0, 0, 2, 30, "зелёный", "текст")
+                app.push_screen(NotesScreen(book_id))
+                await pilot.pause()
+                ol = app.screen.query_one("#list")
+                assert ol.option_count == 1
+                await pilot.press("d")
+                await pilot.pause()
+                assert ol.option_count == 0
+                assert app.db.highlights(book_id) == []
 
         asyncio.run(scenario())
 

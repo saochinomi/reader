@@ -23,7 +23,7 @@ class AllBookmarksScreen(Screen[Optional[tuple[int, int, int]]]):
         self._map: dict[str, tuple[int, int, int]] = {}
 
     def compose(self) -> ComposeResult:
-        yield Static("Закладки всех книг — Enter: открыть, Delete: удалить, Esc: закрыть", id="bookmark_title")
+        yield Static("Закладки всех книг - Enter: открыть, Delete: удалить, Esc: закрыть", id="bookmark_title")
         yield OptionList(id="list")
 
     def on_mount(self) -> None:
@@ -39,14 +39,14 @@ class AllBookmarksScreen(Screen[Optional[tuple[int, int, int]]]):
             self._map[key] = (bm["book_id"], bm["chapter"], bm["paragraph"])
             ol.add_option(
                 Option(
-                    f"{bm['book_title']} · гл. {bm['chapter'] + 1} — {bm['note'] or '…'}",
+                    f"{bm['book_title']} · гл. {bm['chapter'] + 1} - {bm['note'] or '…'}",
                     id=key,
                 )
             )
         if self._map:
             ol.highlighted = 0
         else:
-            ol.add_option(Option("Закладок пока нет (в читалке — s)", id="none", disabled=True))
+            ol.add_option(Option("Закладок пока нет (в читалке - s)", id="none", disabled=True))
 
     def action_close(self) -> None:
         self.dismiss(None)

@@ -10,6 +10,7 @@ HEADER_LINES = 3
 @dataclass
 class Page:
     lines: list[str]
+    meta: list[tuple[int, int, int]]
     chapter_index: int
     paragraph_index: int  # первый абзац на странице
 
@@ -51,6 +52,7 @@ class BookRenderer:
         page_index = max(0, min(page_index, self.page_count() - 1))
         ci, pi = self._pages[page_index]
         lines: list[str] = []
+        meta: list[tuple[int, int, int]] = []
         used = 0
         limit = self.height - HEADER_LINES
         for pci, ppi, text in self.book.paragraphs():
@@ -58,10 +60,13 @@ class BookRenderer:
                 continue
             if used and used + self._line_count(text) > limit:
                 break
-            lines.extend(_wrap(text, self.width))
+            for w, off in _wrap(text, self.width):
+                lines.append(w)
+                meta.append((pci, ppi, off))
             lines.append("")
+            meta.append((pci, ppi, len(text)))
             used += self._line_count(text) + 1
-        return Page(lines=lines, chapter_index=ci, paragraph_index=pi)
+        return Page(lines=lines, meta=meta, chapter_index=ci, paragraph_index=pi)
 
     def locate(self, chapter: int, paragraph: int) -> int:
         """Страница, на которой начинается абзац."""
@@ -70,17 +75,31 @@ class BookRenderer:
                 return i
         return len(self._pages) - 1
 
+    def locate_offset(self, chapter: int, paragraph: int, offset: int) -> int:
+        """Страница, на которой видна позиция (глава, абзац, смещение)."""
+        page = self.locate(chapter, paragraph)
+        for _ in range(4):
+            if page >= self.page_count():
+                return self.page_count() - 1
+            for mci, mpi, moff in self.render(page).meta:
+                if (mci, mpi) == (chapter, paragraph) and moff <= offset:
+                    return page
+            page += 1
+        return page - 1
 
-def _wrap(text: str, width: int) -> list[str]:
+
+def _wrap(text: str, width: int) -> list[tuple[str, int]]:
     if len(text) <= width:
-        return [text]
-    out: list[str] = []
-    rest = text
+        return [(text, 0)]
+    out: list[tuple[str, int]] = []
+    rest, off = text, 0
     while len(rest) > width:
         cut = rest.rfind(" ", 0, width)
         if cut < width // 2:
             cut = width
-        out.append(rest[:cut])
-        rest = rest[cut:].lstrip()
-    out.append(rest)
+        out.append((rest[:cut], off))
+        stripped = rest[cut:].lstrip()
+        off += len(rest) - len(stripped)
+        rest = stripped
+    out.append((rest, off))
     return out

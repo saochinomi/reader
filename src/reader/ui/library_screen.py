@@ -19,6 +19,7 @@ from .confirm_screen import ConfirmScreen
 from .file_picker_screen import FilePickerScreen
 from .help_screen import HelpScreen
 from .key_bar import KeyBar
+from .notes_screen import NotesScreen
 from .reader_screen import ReaderScreen
 from .shelf_screen import ShelfScreen
 from .status_bar import StatusBar
@@ -34,6 +35,7 @@ class LibraryScreen(Screen):
         Binding("u", "rescan", "Сканировать"),
         Binding("d", "delete_book", "Удалить"),
         Binding("B", "show_all_bookmarks", "Закладки"),
+        Binding("H", "show_notes", "Заметки"),
         Binding("r", "reimport", "Перечитать"),
         Binding("s", "cycle_sort", "Сортировка"),
         Binding("c", "choose_color", "Цвет"),
@@ -169,9 +171,9 @@ class LibraryScreen(Screen):
             self.query_one("#last_book", Static).update(
                 "\n".join(
                     [
-                        "[bold]─── Последняя книга ───[/bold]",
+                        "[bold]- Последняя книга -[/bold]",
                         "[#5c5c5c]Нет недавних книг[/]",
-                        f"[{accent}]i — добавить книгу[/]",
+                        f"[{accent}]i - добавить книгу[/]",
                     ]
                 )
             )
@@ -182,18 +184,18 @@ class LibraryScreen(Screen):
         chapter = progress["chapter"] if progress else 0
         paragraph = progress["paragraph"] if progress else 0
         total = sum(c["n"] for c in json.loads(row["chapters"]))
-        pct = "—"
+        pct = "-"
         if total:
             done = sum(c["n"] for c in json.loads(row["chapters"])[:chapter]) + paragraph
             pct = f"{round(done * 100 / total)}%"
         lines = [
-            "[bold]─── Последняя книга ───[/bold]",
+            "[bold]- Последняя книга -[/bold]",
             f"[bold]{row['title']}[/bold]",
         ]
         if authors:
             lines.append(f"[#5c5c5c]{authors}[/]")
         lines.append(f"[#5c5c5c]{row['format'].upper()} · {pct} прочитано[/]")
-        lines.append(f"[{accent}]g — продолжить чтение[/]")
+        lines.append(f"[{accent}]g - продолжить чтение[/]")
         self.query_one("#last_book", Static).update("\n".join(lines))
 
     def _timer_tick(self) -> None:
@@ -216,7 +218,7 @@ class LibraryScreen(Screen):
         chapters = json.loads(row["chapters"])
         total = sum(c["n"] for c in chapters)
         if not total:
-            return "—"
+            return "-"
         done = sum(c["n"] for c in chapters[: row["chapter"] or 0]) + (row["paragraph"] or 0)
         pct = round(done * 100 / total)
         return f"{pct}%"
@@ -233,7 +235,6 @@ class LibraryScreen(Screen):
         row = self._selected_row()
         return int(row["id"]) if row else None
 
-    # --- действия ---
 
     def action_add_book(self) -> None:
         self.app.push_screen(FilePickerScreen(), self._on_file_picked)
@@ -329,7 +330,6 @@ class LibraryScreen(Screen):
     def action_quit_app(self) -> None:
         self.app.exit()
 
-    # --- вкладки ---
 
     def _recent_tabs(self) -> list[tuple[int, str]]:
         recent = self.db.recent_books(6)
@@ -402,6 +402,24 @@ class LibraryScreen(Screen):
     def action_show_all_bookmarks(self) -> None:
         self.app.push_screen(AllBookmarksScreen(), self._on_all_bookmark)
 
+    def action_show_notes(self) -> None:
+        self.app.push_screen(NotesScreen(), self._on_note_selected)
+
+    def _on_note_selected(self, result: tuple[int, int, int, int] | None) -> None:
+        if result is None:
+            return
+        book_id, chapter, paragraph, offset = result
+        self._selected_id = book_id
+        try:
+            self.app.get_book(book_id)
+        except Exception as e:  # noqa: BLE001
+            self.app.notify(f"Не удалось открыть книгу: {e}", severity="error")
+            return
+        self._update_tabs(active=book_id)
+        self.app.push_screen(
+            ReaderScreen(self.db, book_id, jump_to=(chapter, paragraph, offset))
+        )
+
     def action_open_last_book(self) -> None:
         recent = self.db.recent_books(1)
         if not recent:
@@ -434,7 +452,6 @@ class LibraryScreen(Screen):
         self._update_tabs(active=book_id)
         self.app.push_screen(ReaderScreen(self.db, book_id, jump_to=(chapter, paragraph)))
 
-    # --- события ---
 
     @on(Input.Changed, "#search")
     def _on_search_changed(self, event: Input.Changed) -> None:
@@ -452,7 +469,6 @@ class LibraryScreen(Screen):
     def _on_last_book_clicked(self) -> None:
         self.action_open_last_book()
 
-    # --- сканирование ~/Books ---
 
     @work(thread=True)
     def _scan_books_dir(self) -> None:

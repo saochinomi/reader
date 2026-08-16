@@ -253,7 +253,6 @@ class ReaderApp(App):
         self._register_themes()
         self.theme = f"reader-{self._accent_name}"
 
-    # --- настройка акцентного цвета ---
 
     @staticmethod
     def _read_config() -> dict:
@@ -322,7 +321,6 @@ class ReaderApp(App):
         self.theme = f"reader-{name}"
         self._save_config()
 
-    # --- таймер чтения ---
 
     def timer_choices(self) -> tuple[int, ...]:
         return _TIMER_CHOICES
@@ -364,7 +362,7 @@ class ReaderApp(App):
         self._timer_left = max(0.0, self._timer_deadline - time.monotonic())
         if self._timer_left <= 0:
             self._timer_running = False
-            self.notify("⏳ Время чтения вышло — отдохните!", severity="warning")
+            self.notify("⏳ Время чтения вышло - отдохните!", severity="warning")
 
     def timer_text(self) -> str:
         total = self._timer_minutes * 60

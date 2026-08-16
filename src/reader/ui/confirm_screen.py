@@ -11,7 +11,7 @@ from textual.widgets.option_list import Option
 
 
 class ConfirmScreen(Screen[bool]):
-    """Простой диалог подтверждения: Enter — да, Esc — нет."""
+    """Простой диалог подтверждения: Enter - да, Esc - нет."""
 
     BINDINGS = [Binding("escape", "no", "Нет"), Binding("n", "no", "Нет")]
 

@@ -29,7 +29,7 @@ class BookmarksScreen(Screen[Optional[int]]):
         self.on_deleted = on_deleted
 
     def compose(self) -> ComposeResult:
-        yield Static("Закладки — Enter: перейти · E: заметка · D: удалить · Esc: закрыть", id="bookmark_title")
+        yield Static("Закладки - Enter: перейти · E: заметка · D: удалить · Esc: закрыть", id="bookmark_title")
         yield OptionList(id="list")
         yield Footer()
 
@@ -43,7 +43,7 @@ class BookmarksScreen(Screen[Optional[int]]):
         self.bookmarks = self.app.db.bookmarks(self.book_id)
         for i, bm in enumerate(self.bookmarks, 1):
             ol.add_option(
-                Option(f"{i}. стр. {bm['paragraph']} · гл. {bm['chapter'] + 1} — {bm['note'] or '…'}", id=str(bm["id"]))
+                Option(f"{i}. стр. {bm['paragraph']} · гл. {bm['chapter'] + 1} - {bm['note'] or '…'}", id=str(bm["id"]))
             )
         if self.bookmarks:
             ol.highlighted = 0

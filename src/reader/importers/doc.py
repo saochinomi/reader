@@ -46,5 +46,5 @@ def parse_doc(path: Path) -> ParsedBook:
                 chapters=_split_chapters(text),
             )
     raise ValueError(
-        "DOC требует LibreOffice (soffice) или antiword — установите одно из них"
+        "DOC требует LibreOffice (soffice) или antiword - установите одно из них"
     )

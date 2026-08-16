@@ -63,7 +63,7 @@ class TabBar(Horizontal):
         self._rebuild_again = False
 
     def compose(self) -> ComposeResult:
-        yield Static("нет открытых книг — нажми [b]i[/b]", id="tab-empty")
+        yield Static("нет открытых книг - нажми [b]i[/b]", id="tab-empty")
 
     def refresh_tabs(self, tabs: list[tuple[int, str]], active: int | None) -> None:
         self._tabs = tabs[:MAX_BUFFERS]
@@ -90,7 +90,7 @@ class TabBar(Horizontal):
         empty = self.query("#tab-empty")
         if empty:
             await empty.first().remove()
-        await self.mount(Static("нет открытых книг — нажми [b]i[/b]", id="tab-empty"))
+        await self.mount(Static("нет открытых книг - нажми [b]i[/b]", id="tab-empty"))
         if not self._tabs:
             return
         for book_id, title in self._tabs:

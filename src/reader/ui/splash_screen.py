@@ -10,7 +10,7 @@ from .banner import banner
 
 
 class SplashScreen(Screen):
-    """Экран приветствия: лого по центру, внизу — «нажмите Enter»."""
+    """Экран приветствия: лого по центру, внизу - «нажмите Enter»."""
 
     BINDINGS = [
         Binding("enter,space", "continue_app", "Продолжить"),
@@ -40,7 +40,7 @@ class SplashScreen(Screen):
     def compose(self) -> ComposeResult:
         with Vertical(id="splash_middle"):
             yield Static(banner(), id="splash_logo")
-        yield Static("Нажмите Enter — начать", id="splash_hint")
+        yield Static("Нажмите Enter - начать", id="splash_hint")
 
     def action_continue_app(self) -> None:
         self.app.pop_screen()

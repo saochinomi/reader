@@ -37,6 +37,6 @@ def import_directory(db: LibraryDB, directory: Path, force: bool = False) -> lis
         try:
             import_book(db, path, force=force)
             results.append((str(path), True))
-        except Exception as e:  # noqa: BLE001 — одна плохая книга не должна рушить импорт
+        except Exception as e:  # noqa: BLE001 - одна плохая книга не должна рушить импорт
             results.append((f"{path}: {e}", False))
     return results
