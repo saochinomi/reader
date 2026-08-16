@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from rich.text import Text
 from textual.widgets import Static
 
 
@@ -56,14 +57,23 @@ class StatusBar(Static):
         bar_len = 10
         filled = round(pct / 100 * bar_len)
         bar = "▰" * filled + "▱" * (bar_len - filled)
-        parts = [self._mode("READ", bright), f"[#c8c8c8]{title}[/]"]
+        left = f"[{bright}]READ[/] [#c8c8c8]{title}[/]"
         if chapter:
-            parts.append(f"[#8a8a8a]{chapter}[/]")
+            left += f" [#8a8a8a]{chapter}[/]"
+        mid = f"[{color}]{bar}[/] [#c8c8c8]{pct}%[/]"
         if page:
-            parts.append(f"[#8a8a8a]{page}[/]")
+            mid += f" [#8a8a8a]{page}[/]"
+        right = f"[#8a8a8a]{timer}[/]" if timer else ""
         if fmt:
-            parts.append(f"[#8a8a8a]{fmt}[/]")
-        if timer:
-            parts.append(f"[#8a8a8a]{timer}[/]")
-        parts.append(f"[{color}]{bar} {pct}%[/]")
-        self.update("  ·  ".join(parts))
+            right += (f" [#8a8a8a]{fmt}[/]" if right else f"[#8a8a8a]{fmt}[/]")
+        self._zones(left, mid, right)
+
+    def _zones(self, left: str, mid: str, right: str) -> None:
+        width = max(1, self.size.width)
+        lw = len(Text.from_markup(left))
+        mw = len(Text.from_markup(mid))
+        rw = len(Text.from_markup(right))
+        free = width - lw - rw
+        pad_l = max(0, (free - mw) // 2)
+        pad_r = max(0, free - mw - pad_l)
+        self.update(f"{left}{' ' * pad_l}{mid}{' ' * pad_r}{right}")

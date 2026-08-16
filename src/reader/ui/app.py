@@ -230,6 +230,25 @@ Static#bookmark_title {
     color: $text-muted;
     padding: 0 1;
 }
+
+HighlightColorScreen {
+    align-horizontal: center;
+    align-vertical: middle;
+    background: #0a0a0a;
+}
+
+HighlightColorScreen Vertical {
+    width: 60;
+    height: auto;
+    border: round #2a2a2a;
+    background: #101010;
+    padding: 1 2;
+}
+
+HighlightColorScreen Static {
+    height: 1;
+    padding: 0;
+}
 """
 
 

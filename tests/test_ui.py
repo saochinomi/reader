@@ -457,9 +457,7 @@ class TestUi:
                 await pilot.mouse_down("#content", offset=(1, 0))
                 await pilot.mouse_up("#content", offset=(25, 1))
                 await pilot.pause()
-                for _ in range(5):
-                    await pilot.press("down")
-                await pilot.press("enter")
+                await pilot.press("c")
                 await pilot.pause()
                 assert isinstance(app.screen, ReaderScreen)
                 assert captured and captured[0].startswith("Абзац книги")
@@ -616,7 +614,7 @@ class TestUi:
                 reader = app.screen
                 await pilot.mouse_down("#content", offset=(1, 0))
                 await pilot.mouse_up("#content", offset=(1, 0))
-                await pilot.pause()
+                await pilot.pause(0.4)
                 assert app.screen.__class__.__name__ == "HighlightColorScreen"
                 page = reader.renderer.render(reader.page_index)
                 ci, pi, off = page.meta[0]
@@ -652,6 +650,134 @@ class TestUi:
                 page = reader.renderer.render(reader.page_index)
                 ci, pi, off = page.meta[0]
                 assert reader._sel_end == (ci, pi, off + 24)
+                await pilot.press("escape")
+                await pilot.pause()
+                assert isinstance(app.screen, ReaderScreen)
+
+        asyncio.run(scenario())
+
+    def test_keybar_hidden_in_reader_toggle(self, tmp_path: Path):
+        _home(tmp_path)
+        book = tmp_path / "book.fb2"
+        write_fixture(book, build_fb2())
+
+        async def scenario():
+            from reader.library import import_book
+
+            app = ReaderApp(tmp_path / "lib.db", splash=False)
+            async with app.run_test(size=(80, 40)) as pilot:
+                book_id = import_book(app.db, book)
+                app.push_screen(ReaderScreen(app.db, book_id))
+                await pilot.pause()
+                reader = app.screen
+                kb = reader.query_one("#keybar")
+                assert not kb.display
+                wide = reader.query_one("#content").styles.width.value
+                await pilot.press("tab")
+                await pilot.pause()
+                assert kb.display
+                assert reader.query_one("#content").styles.width.value < wide
+                await pilot.press("tab")
+                await pilot.pause()
+                assert not kb.display
+                assert reader.query_one("#content").styles.width.value == wide
+
+        asyncio.run(scenario())
+
+    def test_double_click_selects_word(self, tmp_path: Path):
+        _home(tmp_path)
+        book = tmp_path / "big.txt"
+        big = ("Абзац книги. Ещё предложение текста.\n\n" * 100).encode("utf-8")
+        write_fixture(book, big)
+
+        async def scenario():
+            from textual import events
+
+            from reader.library import import_book
+
+            app = ReaderApp(tmp_path / "lib.db", splash=False)
+            async with app.run_test(size=(100, 40)) as pilot:
+                book_id = import_book(app.db, book)
+                app.push_screen(ReaderScreen(app.db, book_id))
+                await pilot.pause()
+                reader = app.screen
+                content = reader.query_one("#content")
+                x0, y0 = content.region.x, content.region.y
+                args = (None, x0 + 5, y0 + 0, 0, 0, 1, False, False, False)
+                app.post_message(events.MouseDown(*args, screen_x=x0 + 5, screen_y=y0 + 0))
+                await pilot.pause()
+                app.post_message(events.MouseUp(*args, screen_x=x0 + 5, screen_y=y0 + 0))
+                await pilot.pause()
+                app.post_message(events.MouseDown(*args, screen_x=x0 + 5, screen_y=y0 + 0))
+                await pilot.pause()
+                assert app.screen.__class__.__name__ == "HighlightColorScreen"
+                assert reader._sel_end == (0, 0, 5)
+                await pilot.press("escape")
+                await pilot.pause()
+                assert isinstance(app.screen, ReaderScreen)
+
+        asyncio.run(scenario())
+
+    def test_click_on_highlighted_line_removes(self, tmp_path: Path):
+        _home(tmp_path)
+        book = tmp_path / "big.txt"
+        big = ("Абзац книги. Ещё предложение текста.\n\n" * 100).encode("utf-8")
+        write_fixture(book, big)
+
+        async def scenario():
+            from reader.library import import_book
+
+            app = ReaderApp(tmp_path / "lib.db", splash=False)
+            async with app.run_test(size=(100, 40)) as pilot:
+                book_id = import_book(app.db, book)
+                app.push_screen(ReaderScreen(app.db, book_id))
+                await pilot.pause()
+                reader = app.screen
+                page = reader.renderer.render(reader.page_index)
+                app.db.add_highlight(
+                    book_id, 0, 0, 0, 0, 0, len(page.lines[0]), "красный", page.lines[0]
+                )
+                reader._draw()
+                await pilot.mouse_down("#content", offset=(1, 0))
+                await pilot.mouse_up("#content", offset=(1, 0))
+                await pilot.pause(0.4)
+                assert isinstance(app.screen, ReaderScreen)
+                assert app.db.highlights(book_id) == []
+
+        asyncio.run(scenario())
+
+    def test_drag_beyond_content_edges(self, tmp_path: Path):
+        _home(tmp_path)
+        book = tmp_path / "big.txt"
+        big = ("Абзац книги. Ещё предложение текста.\n\n" * 100).encode("utf-8")
+        write_fixture(book, big)
+
+        async def scenario():
+            from textual import events
+
+            from reader.library import import_book
+
+            app = ReaderApp(tmp_path / "lib.db", splash=False)
+            async with app.run_test(size=(100, 40)) as pilot:
+                book_id = import_book(app.db, book)
+                app.push_screen(ReaderScreen(app.db, book_id))
+                await pilot.pause()
+                reader = app.screen
+                content = reader.query_one("#content")
+                x0, y0 = content.region.x, content.region.y
+                args = (None, x0 + 5, y0 + 0, 0, 0, 1, False, False, False)
+                app.post_message(events.MouseDown(*args, screen_x=x0 + 5, screen_y=y0 + 0))
+                await pilot.pause()
+                app.post_message(events.MouseMove(*args, screen_x=x0 + 5, screen_y=y0 + 3))
+                await pilot.pause()
+                app.post_message(events.MouseMove(*args, screen_x=x0 + 5, screen_y=y0 + 60))
+                await pilot.pause()
+                app.post_message(events.MouseUp(*args, screen_x=x0 + 5, screen_y=y0 + 60))
+                await pilot.pause()
+                assert app.screen.__class__.__name__ == "HighlightColorScreen"
+                page = reader.renderer.render(reader.page_index)
+                ci, pi, off = page.meta[3]
+                assert reader._sel_end == (ci, pi, off)
                 await pilot.press("escape")
                 await pilot.pause()
                 assert isinstance(app.screen, ReaderScreen)

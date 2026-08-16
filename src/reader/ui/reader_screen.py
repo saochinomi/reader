@@ -9,6 +9,7 @@ from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
 from textual.screen import Screen
+from textual.timer import Timer
 from textual.widgets import Static
 
 from ..db import LibraryDB
@@ -42,6 +43,7 @@ class ReaderScreen(Screen):
         Binding("f", "cycle_width", "Ширина"),
         Binding("c", "choose_color", "Цвет"),
         Binding("t", "show_timer", "Таймер"),
+        Binding("tab", "toggle_keybar", "Панель клавиш"),
         Binding("?", "show_help", "Помощь"),
         Binding("escape,q", "back", "Назад"),
     ]
@@ -63,6 +65,10 @@ class ReaderScreen(Screen):
         self._sel_start_lx: int | None = None
         self._sel_text = ""
         self._mouse_sel = False
+        self._last_up_at = 0.0
+        self._last_up_lx = -1
+        self._last_up_ly = -1
+        self._click_timer: Timer | None = None
 
     def compose(self) -> ComposeResult:
         with Horizontal(id="main_row"):
@@ -75,6 +81,7 @@ class ReaderScreen(Screen):
 
     def on_mount(self) -> None:
         self.query_one("#keybar", KeyBar).set_keys(KeyBar.reader())
+        self.query_one("#keybar").display = False
         self.book = self.app.get_book(self.book_id)
         self.set_interval(1.0, self._timer_tick)
         self._rebuild_renderer()
@@ -113,7 +120,8 @@ class ReaderScreen(Screen):
 
     def _rebuild_renderer(self) -> None:
         assert self.book is not None
-        keys_w = self.query_one("#keybar").size.width or KeyBar.WIDTH
+        kb = self.query_one("#keybar")
+        keys_w = KeyBar.WIDTH if kb.display else 0
         mode = _WIDTH_MODES[self.width_mode]
         width = max(20, int(min(_MAX_TEXT_WIDTH, self.size.width - keys_w - 2) * mode))
         height = max(5, self.size.height - 2)
@@ -238,6 +246,12 @@ class ReaderScreen(Screen):
         self._rebuild_renderer()
         self._draw()
 
+    def action_toggle_keybar(self) -> None:
+        kb = self.query_one("#keybar")
+        kb.display = not kb.display
+        self._rebuild_renderer()
+        self._draw()
+
     def action_add_bookmark(self) -> None:
         assert self.renderer is not None
         page = self.renderer.render(self.page_index)
@@ -289,18 +303,34 @@ class ReaderScreen(Screen):
     def on_mouse_down(self, event: events.MouseDown) -> None:
         if event.button != 1:
             return
+        self._cancel_pending_click()
         region = self.query_one("#content", Static).region
         if not region.contains(event.screen_x, event.screen_y):
             return
-        pos = self._mouse_pos(event.screen_x - region.x, event.screen_y - region.y)
-        self._mlog(f"down b={event.button} sx={event.screen_x} sy={event.screen_y} reg={region} lx={event.screen_x - region.x} ly={event.screen_y - region.y} row={pos} start={pos}")
+        lx = int(event.screen_x - region.x)
+        ly = int(event.screen_y - region.y)
+        pos = self._mouse_pos(lx, ly)
+        self._mlog(f"down b={event.button} sx={event.screen_x} sy={event.screen_y} reg={region} lx={lx} ly={ly} row={pos} start={pos}")
         if pos is None:
             return
+        if (
+            time.monotonic() - self._last_up_at < 0.35
+            and abs(ly - self._last_up_ly) <= 1
+            and abs(lx - self._last_up_lx) <= 3
+        ):
+            word = self._word_at(pos)
+            if word is not None:
+                self._mouse_sel = False
+                start, end = word
+                self._sel_start = start
+                self._sel_end = end
+                self._open_sel_popup(start, end)
+                return
         self._sel_start = pos
         self._sel_end = pos
-        self._sel_end_y = int(event.screen_y - region.y)
-        self._sel_start_ly = self._sel_end_y
-        self._sel_start_lx = int(event.screen_x - region.x)
+        self._sel_end_y = ly
+        self._sel_start_ly = ly
+        self._sel_start_lx = lx
         self._sel_text = ""
         self._mouse_sel = True
 
@@ -324,13 +354,20 @@ class ReaderScreen(Screen):
         if self._sel_start is None or self._sel_end is None:
             return
         region = self.query_one("#content", Static).region
+        self._last_up_at = time.monotonic()
+        self._last_up_lx = int(event.screen_x - region.x)
+        self._last_up_ly = int(event.screen_y - region.y)
         up_pos = self._mouse_pos(event.screen_x - region.x, event.screen_y - region.y)
         self._mlog(f"up b={event.button} sx={event.screen_x} sy={event.screen_y} reg={region} lx={event.screen_x - region.x} ly={event.screen_y - region.y} row={up_pos} end_y={self._sel_end_y} end={self._sel_end}")
+        was_click = False
         if region.contains(event.screen_x, event.screen_y) and self._sel_end_y is not None and self._sel_start_ly is not None:
             y = int(event.screen_y - region.y)
             x = int(event.screen_x - region.x)
             if y == self._sel_start_ly and self._sel_start_lx is not None and abs(x - self._sel_start_lx) <= 3:
+                if self._remove_covered_highlight(self._sel_start):
+                    return
                 self._sel_end = self._line_end(self._sel_start_ly) or self._sel_end
+                was_click = True
             elif y == self._sel_start_ly and abs(y - self._sel_end_y) <= 2:
                 pos = self._mouse_pos(event.screen_x - region.x, event.screen_y - region.y)
                 if pos is not None:
@@ -347,11 +384,66 @@ class ReaderScreen(Screen):
             self._sel_end = None
             self._draw()
             return
+        if was_click:
+            self._schedule_click_popup(start, end)
+        else:
+            self._open_sel_popup(start, end)
+
+    def _word_at(self, pos: tuple[int, int, int]) -> tuple[tuple[int, int, int], tuple[int, int, int]] | None:
+        assert self.book is not None
+        ci, pi, off = pos
+        text = next((t for c, p, t in self.book.paragraphs() if (c, p) == (ci, pi)), None)
+        if text is None or off > len(text):
+            return None
+        s = e = min(off, len(text))
+        while s > 0 and text[s - 1].isalnum():
+            s -= 1
+        while e < len(text) and text[e].isalnum():
+            e += 1
+        if e <= s:
+            return None
+        return (ci, pi, s), (ci, pi, e)
+
+    def _remove_covered_highlight(self, start: tuple[int, int, int]) -> bool:
+        if self._sel_start_ly is None:
+            return False
+        line_end = self._line_end(self._sel_start_ly)
+        if line_end is None:
+            return False
+        removed = False
+        for h in self.db.highlights(self.book_id):
+            hs = (h["chapter_s"], h["paragraph_s"], h["offset_s"])
+            he = (h["chapter_e"], h["paragraph_e"], h["offset_e"])
+            if hs <= start and he >= line_end:
+                self.db.remove_highlight(h["id"])
+                removed = True
+        if not removed:
+            return False
+        self._sel_start = None
+        self._sel_end = None
+        self._sel_text = ""
+        self._draw()
+        self.app.notify("Заметка удалена", severity="information")
+        return True
+
+    def _schedule_click_popup(self, start: tuple[int, int, int], end: tuple[int, int, int]) -> None:
+        def open_popup() -> None:
+            self._click_timer = None
+            self._open_sel_popup(start, end)
+
+        self._click_timer = self.set_timer(0.35, open_popup)
+
+    def _cancel_pending_click(self) -> None:
+        if self._click_timer is not None:
+            self._click_timer.stop()
+            self._click_timer = None
+
+    def _open_sel_popup(self, start: tuple[int, int, int], end: tuple[int, int, int]) -> None:
         self._sel_text = self._collect_text(start, end)
         self._draw()
         text = self._sel_text
         self.app.push_screen(
-            HighlightColorScreen(),
+            HighlightColorScreen(text),
             lambda result: self._on_sel_action(result, start, end, text),
         )
 
