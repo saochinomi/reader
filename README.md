@@ -3,11 +3,11 @@
 Консольная читалка книг. Работает с TXT, EPUB, FB2, MOBI, AZW, AZW3, PDF, DJVU, DOCX, DOC, HTML, Markdown и RTF. Тёмный минималистичный интерфейс, библиотека хранится в SQLite, есть закладки, заметки к тексту и прогресс чтения.
 
 ## Фото
-
+<img width="1860" height="978" alt="2026-08-16_14-08-10" src="https://github.com/user-attachments/assets/577552f8-5b62-47b9-85b2-f369d6d06b04" />
 <img width="1859" height="558" alt="2026-08-15_16-08-49" src="https://github.com/user-attachments/assets/a51ba8a1-0a27-49b6-b10e-e1e3966f2e6b" />
 <img width="1866" height="982" alt="2026-08-14_23-08-01" src="https://github.com/user-attachments/assets/59983276-e865-41de-a70d-831ec2b609d3" />
-<img width="1868" height="983" alt="2026-08-15_23-08-40" src="https://github.com/user-attachments/assets/4a522223-9330-457c-bfb6-ae341e124ff9" />
-<img width="1866" height="981" alt="2026-08-15_23-08-24" src="https://github.com/user-attachments/assets/a625adc0-9173-4b8b-9047-be0e478ec9b2" />
+<img width="1861" height="980" alt="2026-08-16_14-08-30" src="https://github.com/user-attachments/assets/b8dcfe2d-efb7-4428-abd1-52af577c823c" />
+
 
 
 ## Что умеет
