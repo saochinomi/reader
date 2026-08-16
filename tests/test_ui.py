@@ -111,24 +111,22 @@ class TestUi:
             app = ReaderApp(tmp_path / "lib.db", splash=False)
             async with app.run_test(size=(100, 40)) as pilot:
                 lib = app.screen
-                banner = lib.query_one("#banner", Static)
-                assert "███████╗" in banner.content
-                assert "██████╔╝" in banner.content
-                assert "╚═════╝" in banner.content
-                lines = banner.content.split("\n")
-                assert len(set(len(l) for l in lines)) == 1
-                assert lines[0].rstrip() == "██████╗ ███████╗ █████╗ ██████╗ ███████╗██████╗"
-                assert lines[2].rstrip() == "██████╔╝█████╗  ███████║██║  ██║█████╗  ██████╔╝"
+                headline = lib.query_one("#headline", Static)
+                assert "READER" in headline.content
+                assert "книг: 0" in headline.content
                 assert lib.query_one(TabBar) is not None
                 status = lib.query_one(StatusBar)
                 assert "книг: 0" in status.content
 
                 book_id = import_book(app.db, book)
                 app.db.save_progress(book_id, 0, 1, 1)
-                lib._refresh_table()
+                lib._refresh_cards()
                 lib._update_tabs(active=book_id)
                 await pilot.pause()
                 assert len(status.content) > 0 and "книг: 1" in status.content
+                assert "книг: 1" in headline.content
+                cards = lib.query_one("#cards", Static)
+                assert "╭" in cards.content and "⏵" in cards.content
                 tabs = lib.query_one(TabBar)
                 for _ in range(50):
                     await pilot.pause()
@@ -265,7 +263,7 @@ class TestUi:
 
         asyncio.run(scenario())
 
-    def test_centered_layout(self, tmp_path: Path):
+    def test_card_grid_layout(self, tmp_path: Path):
         _home(tmp_path)
         book = tmp_path / "book.fb2"
         write_fixture(book, build_fb2())
@@ -276,59 +274,28 @@ class TestUi:
             app = ReaderApp(tmp_path / "lib.db", splash=False)
             async with app.run_test(size=(100, 40)) as pilot:
                 lib = app.screen
-                table = lib.query_one("#books")
-                keys_w = lib.query_one("#keybar").size.width
-                assert keys_w > 0
-                assert table.styles.width.value == 100 - keys_w - 2
-                card = lib.query_one("#last_book")
-                assert card.styles.width.value == 100 - keys_w - 2
-                assert card.display
-                assert card.parent.id == "last_row"
-                assert card.styles.text_align == "center"
-                assert "\n" in card.content  # type: ignore
-                assert "Нет недавних книг" in card.content  # type: ignore
+                cards = lib.query_one("#cards", Static)
+                assert cards.display
+                assert lib._cols() == 3
+                assert "нет книг" in cards.content
+                assert cards.parent.id == "cards_scroll"
                 tab_bar = lib.query_one(TabBar)
                 children = list(lib.query("*"))
-                assert children.index(card) < children.index(tab_bar)
-                search = lib.query_one("#search")
-                assert search.styles.width.value == 100 - keys_w - 2
-                assert search.parent.id == "search_row"
-                assert lib.query_one("#keybar").parent.id == "main_row"
-                assert table.parent.id == "table_row"
-                assert tab_bar.parent.id == "main_column"
-                assert lib.query_one("#main_row").children[0].id == "keybar"
-
-                book_id = import_book(app.db, book)
-                app.db.save_progress(book_id, 0, 1, 1)
-                lib._refresh_table()
-                await pilot.pause()
-                assert "Тестовая книга" in card.content  # type: ignore
-                assert "прочитано" in card.content  # type: ignore
-
-                app.push_screen(ReaderScreen(app.db, book_id))
-                await pilot.pause()
-                reader = app.screen
-                content = reader.query_one("#content")
-                assert content.styles.width.value <= 84
-                assert reader.query_one("#content_row") is not None
-                chapter = reader.query_one("#chapter")
-                assert "-" in chapter.content
+                assert children.index(tab_bar) < children.index(cards)
 
         asyncio.run(scenario())
 
-    def test_narrow_window_last_book_visible(self, tmp_path: Path):
+    def test_narrow_window_cards_visible(self, tmp_path: Path):
         _home(tmp_path)
 
         async def scenario():
             app = ReaderApp(tmp_path / "lib.db", splash=False)
             async with app.run_test(size=(80, 40)) as pilot:
                 lib = app.screen
-                card = lib.query_one("#last_book")
-                assert card.display
-                keys_w = lib.query_one("#keybar").size.width
-                table = lib.query_one("#books")
-                assert table.styles.width.value == 80 - keys_w - 2
-                assert card.styles.width.value == 80 - keys_w - 2
+                cards = lib.query_one("#cards", Static)
+                assert cards.display
+                assert lib._cols() == 2
+                assert lib.query_one("#cards_scroll").display
 
         asyncio.run(scenario())
 
@@ -885,13 +852,13 @@ class TestUi:
                 id1 = import_book(app.db, b1)
                 import_book(app.db, b2)
                 lib = app.screen
-                lib._refresh_table()
-                table = lib.query_one("#books", DataTable)
-                assert table.get_row_at(0)[1] == ""
+                lib._refresh_cards()
+                cards = lib.query_one("#cards", Static)
+                assert "⚑" not in cards.content
                 app.db.add_bookmark(id1, 0, 1, "заметка")
                 app.db.add_bookmark(id1, 1, 2, "")
-                lib._refresh_table()
-                assert table.get_row_at(0)[1] == "⚑ 2"
+                lib._refresh_cards()
+                assert "⚑" in cards.content
 
         asyncio.run(scenario())
 
@@ -956,15 +923,105 @@ class TestUi:
                 app.db._conn.execute("UPDATE books SET last_opened = ? WHERE id = ?", (2000, id2))
                 app.db._conn.commit()
                 lib = app.screen
-                lib._refresh_table()
-                await pilot.pause()
-                card = lib.query_one("#last_book")
-                assert "b.epub" in card.content or "Тестовая" in card.content  # type: ignore
+                lib._refresh_cards()
+                cards = lib.query_one("#cards", Static)
+                assert "⏵" in cards.content
                 await pilot.press("g")
                 await pilot.pause()
                 assert isinstance(app.screen, ReaderScreen)
                 assert app.screen.book_id == id2
                 assert app.screen.page_index >= 0
+
+        asyncio.run(scenario())
+
+    def test_card_grid_navigation(self, tmp_path: Path):
+        _home(tmp_path)
+        books = []
+        for name, title in [("a.fb2", "Альфа"), ("b.fb2", "Бета"), ("c.fb2", "Гамма"), ("d.fb2", "Дельта")]:
+            f = tmp_path / name
+            write_fixture(f, build_fb2(title=title))
+            books.append(f)
+
+        async def scenario():
+            from reader.library import import_book
+
+            app = ReaderApp(tmp_path / "lib.db", splash=False)
+            async with app.run_test(size=(100, 40)) as pilot:
+                for b in books:
+                    import_book(app.db, b)
+                lib = app.screen
+                lib._refresh_cards()
+                first = lib._visible[0]
+                assert lib._selected_id == first
+                await pilot.press("j")
+                await pilot.pause()
+                assert lib._selected_id == lib._visible[3]
+                await pilot.press("k")
+                await pilot.pause()
+                assert lib._selected_id == first
+                await pilot.press("right")
+                await pilot.pause()
+                assert lib._selected_id == lib._visible[1]
+                await pilot.press("left")
+                await pilot.pause()
+                assert lib._selected_id == first
+                await pilot.press("enter")
+                await pilot.pause()
+                assert isinstance(app.screen, ReaderScreen)
+                assert app.screen.book_id == first
+
+        asyncio.run(scenario())
+
+    def test_card_click_opens(self, tmp_path: Path):
+        _home(tmp_path)
+        b1 = tmp_path / "a.fb2"
+        b2 = tmp_path / "b.epub"
+        write_fixture(b1, build_fb2())
+        write_fixture(b2, build_epub())
+
+        async def scenario():
+            from reader.library import import_book
+
+            app = ReaderApp(tmp_path / "lib.db", splash=False)
+            async with app.run_test(size=(100, 40)) as pilot:
+                id1 = import_book(app.db, b1)
+                import_book(app.db, b2)
+                lib = app.screen
+                lib._refresh_cards()
+                cards = lib.query_one("#cards", Static)
+                await pilot.click(cards, offset=(30, 1))
+                await pilot.pause()
+                assert isinstance(app.screen, ReaderScreen)
+                assert app.screen.book_id == id1
+
+        asyncio.run(scenario())
+
+    def test_cards_sort_cycle(self, tmp_path: Path):
+        _home(tmp_path)
+        b1 = tmp_path / "a.fb2"
+        b2 = tmp_path / "b.fb2"
+        write_fixture(b1, build_fb2(title="Зетта", year="2024"))
+        write_fixture(b2, build_fb2(title="Альфа", year="1999"))
+
+        async def scenario():
+            from reader.library import import_book
+
+            app = ReaderApp(tmp_path / "lib.db", splash=False)
+            async with app.run_test(size=(100, 40)) as pilot:
+                id1 = import_book(app.db, b1)
+                id2 = import_book(app.db, b2)
+                lib = app.screen
+                lib._refresh_cards()
+                assert lib._visible == [id2, id1]
+                await pilot.press("s")
+                await pilot.pause()
+                assert lib.sort_key == "author"
+                await pilot.press("s")
+                await pilot.pause()
+                assert lib.sort_key == "year"
+                assert lib._visible == [id1, id2]
+                cards = lib.query_one("#cards", Static)
+                assert "Зетта" in cards.content
 
         asyncio.run(scenario())
 
@@ -1099,7 +1156,7 @@ class TestUi:
                 import_book(app.db, b2)
                 import_book(app.db, b3)
                 lib = app.screen
-                lib._refresh_table()
+                lib._refresh_cards()
                 assert len(lib._rows) == 3
                 lib.query_one("#search").value = "тес"
                 await pilot.pause()

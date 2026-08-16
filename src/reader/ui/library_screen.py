@@ -7,13 +7,12 @@ from textual import on, work
 from textual import events
 from textual.app import ComposeResult
 from textual.binding import Binding
-from textual.containers import Horizontal, Vertical
+from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.screen import Screen
-from textual.widgets import DataTable, Input, Static
+from textual.widgets import Input, Static
 
 from ..db import LibraryDB
 from .all_bookmarks_screen import AllBookmarksScreen
-from .banner import banner
 from .color_screen import ColorScreen
 from .confirm_screen import ConfirmScreen
 from .file_picker_screen import FilePickerScreen
@@ -30,6 +29,7 @@ from .timer_screen import TimerScreen
 class LibraryScreen(Screen):
     BINDINGS = [
         Binding("i", "add_book", "Добавить"),
+        Binding("enter", "open_book", "Открыть"),
         Binding("tab", "next_tab", "Вкладки"),
         Binding("/", "focus_search", "Поиск"),
         Binding("u", "rescan", "Сканировать"),
@@ -43,12 +43,18 @@ class LibraryScreen(Screen):
         Binding("S", "show_shelves", "Полки"),
         Binding("p", "put_on_shelf", "На полку"),
         Binding("g", "open_last_book", "Последняя"),
+        Binding("j", "cursor_down", "Вниз"),
+        Binding("k", "cursor_up", "Вверх"),
+        Binding("down", "cursor_down", "Вниз"),
+        Binding("up", "cursor_up", "Вверх"),
+        Binding("left", "cursor_left", "Влево"),
+        Binding("right", "cursor_right", "Вправо"),
         Binding("?", "show_help", "Помощь"),
         Binding("q", "quit_app", "Выход"),
     ]
 
     SORT_KEYS = [("title", "названию"), ("author", "автору"), ("year", "году")]
-    _MAX_TABLE_WIDTH = 110
+    CARD_W = 24
 
     def __init__(self, db: LibraryDB, import_dir: str | None = None):
         super().__init__()
@@ -56,33 +62,28 @@ class LibraryScreen(Screen):
         self.sort_key = "title"
         self.import_dir_on_start = import_dir
         self._rows: dict[str, dict] = {}
+        self._visible: list[int] = []
         self._selected_id: int | None = None
         self._pending_delete_id: int | None = None
         self._tabs: list[tuple[int, str]] = []
         self._current_shelf_id: int | None = None
         self._current_shelf_name: str = ""
+        self._last_cols = 0
 
     def compose(self) -> ComposeResult:
         with Horizontal(id="main_row"):
             yield KeyBar(id="keybar")
             with Vertical(id="main_column"):
-                yield Static(banner(), id="banner")
-                with Horizontal(id="last_row"):
-                    yield Static(id="last_book")
+                yield Static(id="headline")
                 yield TabBar(on_open=self._open_from_tab, on_add=self.action_add_book)
-                with Horizontal(id="table_row"):
-                    yield DataTable(id="books")
+                with VerticalScroll(id="cards_scroll"):
+                    yield Static(id="cards")
                 with Horizontal(id="search_row"):
                     yield Input(placeholder="Поиск по названию, автору, описанию…", id="search")
         yield StatusBar(id="statusbar")
 
     def on_mount(self) -> None:
-        table = self.query_one("#books", DataTable)
-        table.cursor_type = "row"
-        table.zebra_stripes = True
-        table.add_columns("Название", "⚑", "Формат", "Прогресс")
-        self._resize_center()
-        self._refresh_table()
+        self._refresh_cards()
         self._update_tabs()
         self.set_interval(1.0, self._timer_tick)
         self.query_one("#keybar", KeyBar).set_keys(KeyBar.library())
@@ -92,14 +93,8 @@ class LibraryScreen(Screen):
             self._scan_books_dir()
 
     def on_resize(self) -> None:
-        self._resize_center()
-
-    def _resize_center(self) -> None:
-        keys_w = self.query_one("#keybar").size.width or KeyBar.WIDTH
-        width = max(40, min(self._MAX_TABLE_WIDTH, self.size.width - keys_w - 2))
-        self.query_one("#books", DataTable).styles.width = width
-        self.query_one("#last_book", Static).styles.width = width
-        self.query_one("#search", Input).styles.width = width
+        if self._cols() != self._last_cols:
+            self._refresh_cards()
 
     def on_screen_resume(self, event) -> None:
         if self._current_shelf_id is not None:
@@ -109,9 +104,16 @@ class LibraryScreen(Screen):
             if shelf is None:
                 self._current_shelf_id = None
                 self._current_shelf_name = ""
-        self._refresh_table()
+        self._refresh_cards()
         self._update_tabs()
         self.query_one("#keybar", KeyBar).set_keys(KeyBar.library())
+
+    def _cols(self) -> int:
+        avail = max(20, self.size.width - KeyBar.WIDTH - 4)
+        return max(1, avail // (self.CARD_W + 1))
+
+    def _grid_width(self) -> int:
+        return max(20, self.size.width - KeyBar.WIDTH - 4)
 
     def _sorted(self, query: str = "") -> list:
         if self._current_shelf_id is not None:
@@ -136,67 +138,110 @@ class LibraryScreen(Screen):
             rows = sorted(rows, key=lambda r: r["title"].lower())
         return rows
 
-    def _refresh_table(self) -> None:
-        table = self.query_one("#books", DataTable)
-        table.clear()
-        self._rows.clear()
-        selected = self._selected_id
-        selected_row = 0
-        summary = self.db.bookmarks_summary()
-        for i, row in enumerate(self._sorted(self.query_one("#search", Input).value)):
-            key = str(row["id"])
-            self._rows[key] = row
-            table.add_row(
-                row["title"],
-                self._bookmarks_text(summary.get(row["id"], (0, ""))[0]),
-                row["format"].upper(),
-                self._progress_text(row),
-                key=key,
-            )
-            if selected == row["id"]:
-                selected_row = i
-        if self._rows:
-            table.move_cursor(row=selected_row)
+    def _refresh_cards(self) -> None:
+        rows = self._sorted(self.query_one("#search", Input).value)
+        self._rows = {str(r["id"]): r for r in rows}
+        self._visible = [int(r["id"]) for r in rows]
+        if self._selected_id is not None and self._selected_id not in self._visible:
+            self._selected_id = None
+        if self._visible and self._selected_id is None:
+            self._selected_id = self._visible[0]
+        self._last_cols = self._cols()
+        self._draw_cards()
+        self._refresh_headline()
         self._refresh_status()
-        self._refresh_last_book()
 
-    @staticmethod
-    def _bookmarks_text(count: int) -> str:
-        return f"⚑ {count}" if count else ""
-
-    def _refresh_last_book(self) -> None:
-        accent, _bright, _bg, _dim = self.app.accent_colors()
-        recent = self.db.recent_books(1)
-        if not recent:
-            self.query_one("#last_book", Static).update(
-                "\n".join(
-                    [
-                        "[bold]- Последняя книга -[/bold]",
-                        "[#5c5c5c]Нет недавних книг[/]",
-                        f"[{accent}]i - добавить книгу[/]",
-                    ]
-                )
-            )
+    def _draw_cards(self) -> None:
+        cards = self.query_one("#cards", Static)
+        if not self._visible:
+            text = "нет книг - нажми i"
+            cards.update(f"[#5c5c5c]{text.center(self._grid_width())}[/]")
             return
-        row = recent[0]
-        authors = (row["authors"] or "").strip()
-        progress = self.db.get_progress(int(row["id"]))
-        chapter = progress["chapter"] if progress else 0
-        paragraph = progress["paragraph"] if progress else 0
-        total = sum(c["n"] for c in json.loads(row["chapters"]))
-        pct = "-"
+        summary = self.db.bookmarks_summary()
+        last_id = self._last_read_id()
+        cols = self._cols()
+        width = self._grid_width()
+        out = []
+        for i in range(0, len(self._visible), cols):
+            ids = self._visible[i : i + cols]
+            frames = [
+                self._card_lines(
+                    self._rows[str(bid)],
+                    bid == self._selected_id,
+                    summary.get(bid, (0, ""))[0],
+                    bid == last_id,
+                )
+                for bid in ids
+            ]
+            row_w = len(frames) * (self.CARD_W + 1) - 1
+            pad = max(0, (width - row_w) // 2)
+            for r in range(7):
+                out.append(" " * pad + " ".join(fr[r] for fr in frames))
+        cards.update("\n".join(out))
+        row = self._visible.index(self._selected_id) // cols
+        self.query_one("#cards_scroll", VerticalScroll).scroll_to(
+            y=row * 8, animate=False
+        )
+
+    def _card_lines(
+        self, row: dict, selected: bool, bookmarks: int, is_last: bool
+    ) -> list[str]:
+        accent, bright, bg, _dim = self.app.accent_colors()
+        border = accent if selected else "#1c1c1c"
+        inner = "#101010" if selected else "#0d0d0d"
+        w = self.CARD_W - 2
+        title = row["title"].strip()
+        raw_authors = row["authors"] or ""
+        if raw_authors.startswith("["):
+            try:
+                raw_authors = ", ".join(json.loads(raw_authors))
+            except ValueError:
+                pass
+        authors = raw_authors.strip()
+        c1 = title[:11].upper().center(w)
+        c2 = (title[11:22].upper() if len(title) > 11 else "").center(w)
+        t_line = title if len(title) <= w else title[: w - 1] + "…"
+        a_line = authors if len(authors) <= w - 1 else authors[: w - 2] + "…"
+        chapters = json.loads(row["chapters"])
+        total = sum(c["n"] for c in chapters)
         if total:
-            done = sum(c["n"] for c in json.loads(row["chapters"])[:chapter]) + paragraph
-            pct = f"{round(done * 100 / total)}%"
-        lines = [
-            "[bold]- Последняя книга -[/bold]",
-            f"[bold]{row['title']}[/bold]",
+            done = sum(c["n"] for c in chapters[: row["chapter"] or 0]) + (row["paragraph"] or 0)
+            pct = round(done * 100 / total)
+            bar = "▰" * round(pct / 10) + "▱" * (10 - round(pct / 10))
+            p_text = f"{bar} {pct}%"
+            progress = f"[{accent}]{bar}[/] [#8a8a8a]{pct}%[/]"
+        else:
+            p_text = "-"
+            progress = "[#8a8a8a]-[/]"
+        flag = f"[{bright}]⚑[/]" if bookmarks else ""
+        badge = f"[{bright}] ⏵[/]" if is_last else ""
+        a_pad = w - len(a_line) - 1
+        p_pad = w - len(p_text) - (2 if is_last else 0)
+        return [
+            f"[{border}]╭{'─' * w}╮[/]",
+            f"[{border}]│[/][on {bg}][{bright}]{c1}[/][/][{border}]│[/]",
+            f"[{border}]│[/][on {bg}][{accent}]{c2}[/][/][{border}]│[/]",
+            f"[{border}]│[/][on {inner}][bold][#c8c8c8]{t_line.ljust(w)}[/][/][/][{border}]│[/]",
+            f"[{border}]│[/][on {inner}][#8a8a8a]{a_line.ljust(a_pad)}[/][/]{flag}[{border}]│[/]",
+            f"[{border}]│[/][on {inner}]{progress}{' ' * p_pad}{badge}[/][{border}]│[/]",
+            f"[{border}]╰{'─' * w}╯[/]",
         ]
-        if authors:
-            lines.append(f"[#5c5c5c]{authors}[/]")
-        lines.append(f"[#5c5c5c]{row['format'].upper()} · {pct} прочитано[/]")
-        lines.append(f"[{accent}]g - продолжить чтение[/]")
-        self.query_one("#last_book", Static).update("\n".join(lines))
+
+    def _refresh_headline(self) -> None:
+        accent, bright, _bg, _dim = self.app.accent_colors()
+        parts = [f"[{bright}]READER[/]"]
+        if self._current_shelf_name:
+            parts.append(f"[#8a8a8a]полка: {self._current_shelf_name}[/]")
+        parts.append(f"[#8a8a8a]книг: {len(self._visible)}[/]")
+        query = self.query_one("#search", Input).value.strip()
+        if query:
+            parts.append(f"[#8a8a8a]«{query}»[/]")
+        parts.append(f"[#5c5c5c]по {dict(self.SORT_KEYS)[self.sort_key]}[/]")
+        self.query_one("#headline", Static).update("  ·  ".join(parts))
+
+    def _last_read_id(self) -> int | None:
+        recent = self.db.recent_books(1)
+        return int(recent[0]["id"]) if recent else None
 
     def _timer_tick(self) -> None:
         self.app.timer_tick()
@@ -213,27 +258,35 @@ class LibraryScreen(Screen):
             shelf=self._current_shelf_name,
         )
 
-    @staticmethod
-    def _progress_text(row) -> str:
-        chapters = json.loads(row["chapters"])
-        total = sum(c["n"] for c in chapters)
-        if not total:
-            return "-"
-        done = sum(c["n"] for c in chapters[: row["chapter"] or 0]) + (row["paragraph"] or 0)
-        pct = round(done * 100 / total)
-        return f"{pct}%"
-
     def _selected_row(self) -> dict | None:
-        table = self.query_one("#books", DataTable)
-        cursor = table.cursor_coordinate
-        if cursor is None:
+        if self._selected_id is None:
             return None
-        row_key = table.coordinate_to_cell_key(cursor).row_key
-        return self._rows.get(row_key.value)
+        return self._rows.get(str(self._selected_id))
 
     def _current_book_id(self) -> int | None:
         row = self._selected_row()
         return int(row["id"]) if row else None
+
+    def _move_cursor(self, delta: int) -> None:
+        if not self._visible:
+            return
+        if self._selected_id not in self._visible:
+            self._selected_id = self._visible[0]
+        idx = self._visible.index(self._selected_id)
+        self._selected_id = self._visible[(idx + delta) % len(self._visible)]
+        self._refresh_cards()
+
+    def action_cursor_down(self) -> None:
+        self._move_cursor(self._cols())
+
+    def action_cursor_up(self) -> None:
+        self._move_cursor(-self._cols())
+
+    def action_cursor_left(self) -> None:
+        self._move_cursor(-1)
+
+    def action_cursor_right(self) -> None:
+        self._move_cursor(1)
 
 
     def action_add_book(self) -> None:
@@ -258,7 +311,7 @@ class LibraryScreen(Screen):
         except Exception as e:  # noqa: BLE001
             self.app.notify(f"Не удалось открыть «{path.name}»: {e}", severity="error")
             return
-        self._refresh_table()
+        self._refresh_cards()
         self._selected_id = book_id
         self._update_tabs(active=book_id)
         self.app.push_screen(ReaderScreen(self.db, book_id))
@@ -269,7 +322,7 @@ class LibraryScreen(Screen):
     def action_cycle_sort(self) -> None:
         keys = [k for k, _ in self.SORT_KEYS]
         self.sort_key = keys[(keys.index(self.sort_key) + 1) % len(keys)]
-        self._refresh_table()
+        self._refresh_cards()
 
     def action_rescan(self) -> None:
         self._scan_books_dir()
@@ -296,7 +349,7 @@ class LibraryScreen(Screen):
         if self._current_shelf_id is not None:
             self.db.remove_book_from_shelf(self._current_shelf_id, book_id)
             self.app.notify(f"Снято с полки «{self._current_shelf_name}»", severity="information")
-            self._refresh_table()
+            self._refresh_cards()
             return
         self._pending_delete_id = book_id
         self.app.push_screen(
@@ -310,7 +363,7 @@ class LibraryScreen(Screen):
             return
         self.db.remove_book(book_id)
         self.app._books_cache.pop(book_id, None)
-        self._refresh_table()
+        self._refresh_cards()
 
     async def action_reimport(self) -> None:
         book_id = self._current_book_id()
@@ -325,7 +378,7 @@ class LibraryScreen(Screen):
             self.app.notify("Книга перечитана")
         except Exception as e:  # noqa: BLE001
             self.app.notify(f"Ошибка: {e}", severity="error")
-        self._refresh_table()
+        self._refresh_cards()
 
     def action_quit_app(self) -> None:
         self.app.exit()
@@ -381,7 +434,7 @@ class LibraryScreen(Screen):
             self._current_shelf_name = shelf["name"] if shelf else ""
             if self._current_shelf_name:
                 self.app.notify(f"Полка «{self._current_shelf_name}»", severity="information")
-        self._refresh_table()
+        self._refresh_cards()
 
     def action_put_on_shelf(self) -> None:
         book_id = self._current_book_id()
@@ -456,18 +509,27 @@ class LibraryScreen(Screen):
     @on(Input.Changed, "#search")
     def _on_search_changed(self, event: Input.Changed) -> None:
         self._selected_id = None
-        self._refresh_table()
+        self._refresh_cards()
 
-    @on(DataTable.RowSelected, "#books")
-    async def _on_row_selected(self, event: DataTable.RowSelected) -> None:
-        row = self._rows.get(event.row_key.value)
-        if row:
-            self._selected_id = int(row["id"])
+    @on(events.Click, "#cards")
+    async def _on_cards_clicked(self, event: events.Click) -> None:
+        if not self._visible:
+            return
+        cols = self._cols()
+        start = event.offset.y // 8 * cols
+        n = min(cols, len(self._visible) - start)
+        if n <= 0:
+            return
+        row_w = n * (self.CARD_W + 1) - 1
+        pad = max(0, (self._grid_width() - row_w) // 2)
+        x = event.offset.x - pad
+        if x < 0:
+            return
+        col = x // (self.CARD_W + 1)
+        if col >= n:
+            return
+        self._selected_id = self._visible[start + col]
         await self.action_open_book()
-
-    @on(events.Click, "#last_book")
-    def _on_last_book_clicked(self) -> None:
-        self.action_open_last_book()
 
 
     @work(thread=True)
@@ -486,7 +548,7 @@ class LibraryScreen(Screen):
 
     def _scan_finished(self, results) -> None:
         if results:
-            self._refresh_table()
+            self._refresh_cards()
             self._update_tabs()
 
     @work(thread=True)
@@ -503,7 +565,7 @@ class LibraryScreen(Screen):
     def _import_finished(self, directory: str, results) -> None:
         ok = sum(1 for _, s in results if s)
         failed = [(p, e) for p, e in results if not e]
-        self._refresh_table()
+        self._refresh_cards()
         self._update_tabs()
         if not failed:
             self.app.notify(f"Импортировано книг: {ok} из {directory}", severity="information")

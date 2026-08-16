@@ -42,10 +42,10 @@ Static {
     background: transparent;
 }
 
-Static#banner {
-    height: 7;
-    color: $accent;
-    padding: 1 2 0 2;
+Static#headline {
+    height: 1;
+    color: $text-muted;
+    padding: 0 2;
     text-align: center;
     text-style: bold;
 }
@@ -127,6 +127,15 @@ Static#last_book {
 Horizontal#table_row {
     height: 1fr;
     align-horizontal: center;
+}
+
+VerticalScrollContainer#cards_scroll {
+    height: 1fr;
+    padding: 1 2;
+}
+
+Static#cards {
+    height: auto;
 }
 
 Horizontal#search_row {

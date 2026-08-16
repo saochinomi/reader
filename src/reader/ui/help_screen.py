@@ -12,6 +12,8 @@ _SECTIONS = [
             ("i", "добавить книгу - файловый менеджер"),
             ("Enter", "открыть выбранную книгу"),
             ("g", "продолжить последнюю книгу (клик по карточке)"),
+            ("j / k / стрелки", "навигация по карточкам"),
+            ("клик по карточке", "открыть книгу"),
             ("/", "поиск"),
             ("s", "сортировка (название/автор/год)"),
             ("u", "пересканировать ~/Books"),
@@ -65,7 +67,7 @@ class HelpScreen(Screen):
         _acc, bright, _bg, _dim = self.app.accent_colors()
         lines = [f"[bold]{bright} Клавиши[/bold]", ""]
         for title, pairs in _SECTIONS:
-            lines.append(f"[bold]#c8c8c8{title}[/bold]")
+            lines.append(f"[bold #c8c8c8]{title}[/bold]")
             for key, desc in pairs:
                 lines.append(f"  [{_acc}]{key:>8}[/]  {desc}")
             lines.append("")
