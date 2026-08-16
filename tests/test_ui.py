@@ -396,7 +396,6 @@ class TestUi:
                 assert "on #3a3a3a" not in content.content  # type: ignore
 
                 await pilot.mouse_down("#content", offset=(1, 0))
-                await pilot.hover("#content", offset=(25, 2))
                 await pilot.mouse_up("#content", offset=(25, 2))
                 await pilot.pause()
                 assert app.screen.__class__.__name__ == "HighlightColorScreen"
@@ -469,6 +468,35 @@ class TestUi:
 
         asyncio.run(scenario())
 
+    def test_highlight_ignores_buttonless_move(self, tmp_path: Path):
+        _home(tmp_path)
+        book = tmp_path / "big.txt"
+        big = ("Абзац книги. Ещё предложение текста.\n\n" * 100).encode("utf-8")
+        write_fixture(book, big)
+
+        async def scenario():
+            from reader.library import import_book
+
+            app = ReaderApp(tmp_path / "lib.db", splash=False)
+            async with app.run_test(size=(100, 40)) as pilot:
+                book_id = import_book(app.db, book)
+                app.push_screen(ReaderScreen(app.db, book_id))
+                await pilot.pause()
+                reader = app.screen
+                await pilot.mouse_down("#content", offset=(1, 0))
+                await pilot.hover("#content", offset=(25, 5))
+                await pilot.mouse_up("#content", offset=(25, 2))
+                await pilot.pause()
+                assert app.screen.__class__.__name__ == "HighlightColorScreen"
+                page = reader.renderer.render(reader.page_index)
+                ci, pi, off = page.meta[2]
+                assert reader._sel_end == (ci, pi, off + 24)
+                await pilot.press("escape")
+                await pilot.pause()
+                assert isinstance(app.screen, ReaderScreen)
+
+        asyncio.run(scenario())
+
     def test_click_without_drag_no_window(self, tmp_path: Path):
         _home(tmp_path)
         book = tmp_path / "book.fb2"
@@ -506,7 +534,6 @@ class TestUi:
                 await pilot.pause()
                 content = app.screen.query_one("#content")
                 await pilot.mouse_down("#content", offset=(1, 0))
-                await pilot.hover("#content", offset=(25, 2))
                 await pilot.mouse_up(offset=(content.region.right + 3, 30))
                 await pilot.pause()
                 assert app.screen.__class__.__name__ == "HighlightColorScreen"

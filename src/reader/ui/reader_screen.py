@@ -280,7 +280,7 @@ class ReaderScreen(Screen):
         self._mouse_sel = True
 
     def on_mouse_move(self, event: events.MouseMove) -> None:
-        if not self._mouse_sel:
+        if not self._mouse_sel or event.button != 1:
             return
         region = self.query_one("#content", Static).region
         x = min(max(event.screen_x, region.x), region.right - 1)
