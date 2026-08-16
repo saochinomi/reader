@@ -114,8 +114,9 @@ Static#shelves_title {
     margin-bottom: 1;
 }
 
-Static#shelves {
+VerticalScroll#shelf_scroll {
     height: 1fr;
+    scrollbar-size: 0 0;
 }
 
 .divider {

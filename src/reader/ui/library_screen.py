@@ -75,12 +75,16 @@ class LibraryScreen(Screen):
         self._focus = "grid"
         self._shelves: list[tuple[int | None, str, int]] = []
         self._shelf_index = 0
+        self._dropdown_open = False
+        self._open_shelf_id: int | None = None
+        self._open_books: list[dict] = []
 
     def compose(self) -> ComposeResult:
         with Horizontal(id="main_row"):
             with Vertical(id="sidebar"):
                 yield Static("▦ ПОЛКИ", id="shelves_title")
-                yield Static(id="shelves")
+                with VerticalScroll(id="shelf_scroll"):
+                    yield Static(id="shelves")
             with Vertical(id="main_column"):
                 yield Static(id="headline")
                 yield Static(classes="divider")
@@ -115,6 +119,12 @@ class LibraryScreen(Screen):
             if shelf is None:
                 self._current_shelf_id = None
                 self._current_shelf_name = ""
+        if self._dropdown_open and self._open_shelf_id is not None:
+            shelf = next(
+                (r for r in self.db.all_shelves() if r["id"] == self._open_shelf_id), None
+            )
+            if shelf is None:
+                self._dropdown_open = False
         self._refresh_shelves()
         self._refresh_cards()
         self._update_tabs()
@@ -234,6 +244,18 @@ class LibraryScreen(Screen):
             f"[{border}]╰{'─' * w}╯[/]",
         ]
 
+    def _shelf_rows(self) -> list[dict]:
+        rows = [
+            {"kind": "shelf", "sid": sid, "name": name, "n": n}
+            for sid, name, n in self._shelves
+        ]
+        if self._dropdown_open:
+            rows += [
+                {"kind": "book", "id": int(r["id"]), "title": r["title"]}
+                for r in self._open_books
+            ]
+        return rows
+
     def _refresh_shelves(self) -> None:
         accent, bright, bg, _dim = self.app.accent_colors()
         shelves = self.db.all_shelves()
@@ -241,21 +263,38 @@ class LibraryScreen(Screen):
         self._shelves = [(None, "Все книги", total)] + [
             (int(s["id"]), s["name"], s["n"]) for s in shelves
         ]
-        if self._shelf_index >= len(self._shelves):
-            self._shelf_index = 0
+        if self._dropdown_open:
+            self._open_books = self._sorted()
+        rows = self._shelf_rows()
+        if self._shelf_index >= len(rows):
+            self._shelf_index = max(0, len(rows) - 1)
         current = self._current_shelf_id
         lines = []
-        for i, (sid, name, n) in enumerate(self._shelves):
-            mark = "▸" if sid == current else " "
-            label = name if len(name) <= 13 else name[:12] + "…"
-            text = f"{mark} {label:<11}{n:>4}"
+        for i, entry in enumerate(rows):
+            if entry["kind"] == "book":
+                title = entry["title"]
+                if len(title) > 16:
+                    title = title[:15] + "…"
+                text = f"  {title}"
+            else:
+                mark = "▸" if entry["sid"] == current else " "
+                label = entry["name"]
+                if len(label) > 13:
+                    label = label[:12] + "…"
+                text = f"{mark} {label:<11}{entry['n']:>4}"
             if self._focus == "shelves" and i == self._shelf_index:
                 lines.append(f"[{bright} on {bg}]{text}[/]")
-            elif sid == current:
+            elif entry["kind"] == "shelf" and entry["sid"] == current:
                 lines.append(f"[{accent}]{text}[/]")
             else:
                 lines.append(f"[#8a8a8a]{text}[/]")
         self.query_one("#shelves", Static).update("\n".join(lines))
+        self.call_after_refresh(self._scroll_shelf_cursor)
+
+    def _scroll_shelf_cursor(self) -> None:
+        self.query_one("#shelf_scroll", VerticalScroll).scroll_to(
+            y=self._shelf_index, animate=False
+        )
 
     def _refresh_headline(self) -> None:
         accent, bright, _bg, _dim = self.app.accent_colors()
@@ -299,9 +338,10 @@ class LibraryScreen(Screen):
 
     def _move_cursor(self, delta: int) -> None:
         if self._focus == "shelves":
-            if not self._shelves:
+            rows = self._shelf_rows()
+            if not rows:
                 return
-            self._shelf_index = (self._shelf_index + delta) % len(self._shelves)
+            self._shelf_index = (self._shelf_index + delta) % len(rows)
             self._refresh_shelves()
             return
         if not self._visible:
@@ -332,16 +372,30 @@ class LibraryScreen(Screen):
         self._focus = "grid"
         self._refresh_shelves()
 
-    def action_open_shelf(self) -> None:
-        if not self._shelves:
+    async def action_open_shelf(self) -> None:
+        rows = self._shelf_rows()
+        if not rows:
             return
-        shelf_id, name, _n = self._shelves[self._shelf_index]
-        if shelf_id != self._current_shelf_id:
-            self._current_shelf_id = shelf_id
-            self._current_shelf_name = name if shelf_id is not None else ""
-            self._selected_id = None
-            self._refresh_cards()
-        self._focus = "grid"
+        entry = rows[self._shelf_index]
+        if entry["kind"] == "book":
+            await self._open_book(entry["id"])
+            return
+        sid = entry["sid"]
+        if self._dropdown_open and self._open_shelf_id == sid:
+            self._dropdown_open = False
+            self._shelf_index = next(
+                i for i, (s, _n, _c) in enumerate(self._shelves) if s == sid
+            )
+            self._refresh_shelves()
+            return
+        self._dropdown_open = True
+        self._open_shelf_id = sid
+        self._current_shelf_id = sid
+        self._current_shelf_name = entry["name"] if sid is not None else ""
+        self._selected_id = None
+        self._refresh_cards()
+        self._open_books = self._sorted()
+        self._shelf_index = len(self._shelves)
         self._refresh_shelves()
 
     def action_tab_next(self) -> None:
@@ -391,12 +445,15 @@ class LibraryScreen(Screen):
 
     async def action_open_book(self) -> None:
         if self._focus == "shelves":
-            self.action_open_shelf()
+            await self.action_open_shelf()
             return
         book_id = self._current_book_id()
         if book_id is None:
             self.app.notify("Нет выбранной книги", severity="warning")
             return
+        await self._open_book(book_id)
+
+    async def _open_book(self, book_id: int) -> None:
         self._selected_id = book_id
         try:
             self.app.get_book(book_id)
@@ -491,6 +548,7 @@ class LibraryScreen(Screen):
             if sid == self._current_shelf_id:
                 self._shelf_index = i
         self._focus = "grid"
+        self._dropdown_open = False
         self._refresh_cards()
         self._refresh_shelves()
 
@@ -595,14 +653,15 @@ class LibraryScreen(Screen):
         await self.action_open_book()
 
     @on(events.Click, "#shelves")
-    def _on_shelves_clicked(self, event: events.Click) -> None:
-        if not self._shelves:
+    async def _on_shelves_clicked(self, event: events.Click) -> None:
+        rows = self._shelf_rows()
+        if not rows:
             return
         row = event.offset.y
-        if 0 <= row < len(self._shelves):
+        if 0 <= row < len(rows):
             self._shelf_index = row
             self._focus = "shelves"
-            self.action_open_shelf()
+            await self.action_open_shelf()
 
 
     @work(thread=True)

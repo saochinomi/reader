@@ -4,6 +4,7 @@ import asyncio
 from pathlib import Path
 
 import pytest
+from textual.containers import VerticalScroll
 from textual.widgets import Button, DataTable, DirectoryTree, Static
 
 from reader.ui.app import ReaderApp
@@ -1049,15 +1050,14 @@ class TestUi:
                 assert lib._shelf_index == 1
                 await pilot.press("enter")
                 await pilot.pause()
+                assert lib._dropdown_open
+                assert lib._open_shelf_id == sid
                 assert lib._current_shelf_id == sid
                 assert lib._visible == [id1]
-                assert lib._focus == "grid"
-                await pilot.press("l")
-                await pilot.pause()
-                assert lib._focus == "grid"
-                await pilot.press("j")
-                await pilot.pause()
-                assert lib._selected_id == id1
+                assert lib._focus == "shelves"
+                assert lib._shelf_index == 2
+                shelves = lib.query_one("#shelves", Static)
+                assert "Альфа" in shelves.content
                 await pilot.press("enter")
                 await pilot.pause()
                 assert isinstance(app.screen, ReaderScreen)
@@ -1088,11 +1088,74 @@ class TestUi:
                 await pilot.pause()
                 assert lib._current_shelf_id == sid
                 assert lib._visible == [id1]
-                assert lib._focus == "grid"
+                assert lib._dropdown_open
+                await pilot.click(shelves, offset=(2, 2))
+                await pilot.pause()
+                assert isinstance(app.screen, ReaderScreen)
+                assert app.screen.book_id == id1
+
+        asyncio.run(scenario())
+
+    def test_shelf_dropdown(self, tmp_path: Path):
+        _home(tmp_path)
+        b1 = tmp_path / "a.fb2"
+        b2 = tmp_path / "b.fb2"
+        write_fixture(b1, build_fb2(title="Альфа"))
+        write_fixture(b2, build_fb2(title="Бета"))
+
+        async def scenario():
+            from reader.library import import_book
+
+            app = ReaderApp(tmp_path / "lib.db", splash=False)
+            async with app.run_test(size=(100, 40)) as pilot:
+                import_book(app.db, b1)
+                import_book(app.db, b2)
+                lib = app.screen
+                lib._refresh_shelves()
+                shelves = lib.query_one("#shelves", Static)
                 await pilot.click(shelves, offset=(2, 0))
                 await pilot.pause()
-                assert lib._current_shelf_id is None
+                assert lib._dropdown_open
+                assert lib._open_shelf_id is None
                 assert len(lib._visible) == 2
+                assert "Альфа" in shelves.content
+                assert "Бета" in shelves.content
+                await pilot.click(shelves, offset=(2, 0))
+                await pilot.pause()
+                assert not lib._dropdown_open
+                assert "Альфа" not in shelves.content
+
+        asyncio.run(scenario())
+
+    def test_shelf_dropdown_scroll(self, tmp_path: Path):
+        _home(tmp_path)
+        for i in range(60):
+            write_fixture(tmp_path / f"b{i:02d}.fb2", build_fb2(title=f"Книга номер {i:02d}"))
+
+        async def scenario():
+            from reader.library import import_book
+
+            app = ReaderApp(tmp_path / "lib.db", splash=False)
+            async with app.run_test(size=(100, 40)) as pilot:
+                for i in range(60):
+                    import_book(app.db, tmp_path / f"b{i:02d}.fb2")
+                lib = app.screen
+                lib._refresh_shelves()
+                shelves = lib.query_one("#shelves", Static)
+                await pilot.press("h")
+                await pilot.pause()
+                await pilot.press("enter")
+                await pilot.pause()
+                assert lib._dropdown_open
+                for _ in range(10):
+                    await pilot.press("j")
+                await pilot.pause()
+                scroll = lib.query_one("#shelf_scroll", VerticalScroll)
+                assert scroll.scroll_y > 0
+                await pilot.click(shelves, offset=(2, 15))
+                await pilot.pause()
+                assert isinstance(app.screen, ReaderScreen)
+                assert app.screen.book_id == 15
 
         asyncio.run(scenario())
 
@@ -1198,6 +1261,7 @@ class TestUi:
                 lib._refresh_status()
                 status = lib.query_one("#statusbar", StatusBar)
                 assert re.search(r"\d{2}:\d{2}", status.content)
+                assert "◷" in status.content
                 assert "30:00" in status.content
                 app.timer_start_pause()
                 lib._refresh_status()

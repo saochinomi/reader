@@ -71,7 +71,7 @@ class StatusBar(Static):
     def _timer_zone(self, timer: str) -> str:
         """Таймер, часы и когда закончится чтение."""
         parts = [timer] if timer else []
-        parts.append(time.strftime("%H:%M"))
+        parts.append(f"◷ {time.strftime('%H:%M')}")
         if timer and not timer.startswith("‖"):
             mmss = timer.split(":")
             try:
