@@ -490,6 +490,32 @@ class TestUi:
 
         asyncio.run(scenario())
 
+    def test_highlight_release_outside_content(self, tmp_path: Path):
+        _home(tmp_path)
+        book = tmp_path / "big.txt"
+        big = ("Абзац книги. Ещё предложение текста.\n\n" * 100).encode("utf-8")
+        write_fixture(book, big)
+
+        async def scenario():
+            from reader.library import import_book
+
+            app = ReaderApp(tmp_path / "lib.db", splash=False)
+            async with app.run_test(size=(100, 40)) as pilot:
+                book_id = import_book(app.db, book)
+                app.push_screen(ReaderScreen(app.db, book_id))
+                await pilot.pause()
+                content = app.screen.query_one("#content")
+                await pilot.mouse_down("#content", offset=(1, 0))
+                await pilot.hover("#content", offset=(25, 2))
+                await pilot.mouse_up(offset=(content.region.right + 3, 30))
+                await pilot.pause()
+                assert app.screen.__class__.__name__ == "HighlightColorScreen"
+                await pilot.press("escape")
+                await pilot.pause()
+                assert isinstance(app.screen, ReaderScreen)
+
+        asyncio.run(scenario())
+
     def test_notes_screen_books_to_reader(self, tmp_path: Path):
         _home(tmp_path)
         b1 = tmp_path / "a.fb2"

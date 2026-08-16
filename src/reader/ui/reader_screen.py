@@ -4,7 +4,7 @@ import time
 from bisect import bisect_left, bisect_right
 
 from rich.markup import escape
-from textual import events, on
+from textual import events
 from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
@@ -265,34 +265,35 @@ class ReaderScreen(Screen):
         col = max(0, min(int(x) - 1, len(line)))
         return ci, pi, off + col
 
-    @on(events.MouseDown, "#content")
-    def _on_mouse_down(self, event: events.MouseDown) -> None:
+    def on_mouse_down(self, event: events.MouseDown) -> None:
         if event.button != 1:
             return
-        pos = self._mouse_pos(event.x, event.y)
+        region = self.query_one("#content", Static).region
+        if not region.contains(event.screen_x, event.screen_y):
+            return
+        pos = self._mouse_pos(event.screen_x - region.x, event.screen_y - region.y)
         if pos is None:
             return
         self._sel_start = pos
         self._sel_end = pos
         self._sel_text = ""
         self._mouse_sel = True
-        self.query_one("#content", Static).capture_mouse()
 
-    @on(events.MouseMove, "#content")
-    def _on_mouse_move(self, event: events.MouseMove) -> None:
+    def on_mouse_move(self, event: events.MouseMove) -> None:
         if not self._mouse_sel:
             return
-        pos = self._mouse_pos(event.x, event.y)
+        region = self.query_one("#content", Static).region
+        x = min(max(event.screen_x, region.x), region.right - 1)
+        y = min(max(event.screen_y, region.y), region.bottom - 1)
+        pos = self._mouse_pos(x - region.x, y - region.y)
         if pos is not None and pos != self._sel_end:
             self._sel_end = pos
             self._draw()
 
-    @on(events.MouseUp, "#content")
-    def _on_mouse_up(self, event: events.MouseUp) -> None:
-        if event.button != 1:
+    def on_mouse_up(self, event: events.MouseUp) -> None:
+        if event.button != 1 or not self._mouse_sel:
             return
         self._mouse_sel = False
-        self.query_one("#content", Static).release_mouse()
         if self._sel_start is None or self._sel_end is None:
             return
         start, end = sorted((self._sel_start, self._sel_end))
