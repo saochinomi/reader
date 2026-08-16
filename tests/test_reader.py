@@ -376,3 +376,20 @@ class TestDb:
         assert [r["id"] for r in db.shelf_books(s1)] == [b2]
         db.delete_shelf(s2)
         assert {r["name"] for r in db.all_shelves()} == {"Техника"}
+
+
+class TestPdf:
+    def test_parse(self, tmp_path: Path):
+        pymupdf = pytest.importorskip("pymupdf")
+        p = tmp_path / "book.pdf"
+        doc = pymupdf.open()
+        page = doc.new_page()
+        page.insert_text((50, 80), "Hello from PDF")
+        doc.save(str(p))
+        doc.close()
+
+        book = parse(p)
+        assert book.format == Format.PDF
+        assert book.title == "book"
+        text = "\n".join(par for ch in book.chapters for par in ch.paragraphs)
+        assert "Hello from PDF" in text

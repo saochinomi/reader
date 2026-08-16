@@ -61,11 +61,10 @@ class LibraryScreen(Screen):
     SIDEBAR_W = 20
     WATCH_INTERVAL = 3.0
 
-    def __init__(self, db: LibraryDB, import_dir: str | None = None):
+    def __init__(self, db: LibraryDB):
         super().__init__()
         self.db = db
         self.sort_key = "title"
-        self.import_dir_on_start = import_dir
         self._rows: dict[str, dict] = {}
         self._visible: list[int] = []
         self._selected_id: int | None = None
@@ -73,6 +72,8 @@ class LibraryScreen(Screen):
         self._tabs: list[tuple[int, str]] = []
         self._current_shelf_id: int | None = None
         self._current_shelf_name: str = ""
+        self._importing: set[str] = set()
+        self._scanning = False
         self._last_cols = 0
         self._focus = "grid"
         self._shelves: list[tuple[int | None, str, int]] = []
@@ -113,10 +114,8 @@ class LibraryScreen(Screen):
         self.set_interval(1.0, self._timer_tick)
         self.set_interval(self.WATCH_INTERVAL, self._watch_books_dir)
         self._watch_books_dir()
-        if self.import_dir_on_start:
-            self._import_dir(self.import_dir_on_start)
-        else:
-            self._scan_books_dir()
+        self._scanning = True
+        self._scan_books_dir()
 
     def on_resize(self) -> None:
         if self._cols() != self._last_cols:
@@ -696,6 +695,8 @@ class LibraryScreen(Screen):
                 found.add(key)
                 if key in self._known_files:
                     continue
+                if key in self._importing:
+                    continue
                 if self._failed.get(key, 0) > now - 30:
                     continue
                 pending.append(key)
@@ -722,7 +723,9 @@ class LibraryScreen(Screen):
             self._refresh_shelves()
             self._update_tabs()
             self.app.notify(f"Удалено книг: {deleted}", severity="warning")
-        if pending:
+        if pending and not self._scanning and len(self._importing) < 2:
+            self._importing.update(pending)
+            self.app.notify(f"Импортирую книг: {len(pending)}", severity="information")
             self._watch_import(pending)
 
     @work(thread=True)
@@ -752,6 +755,7 @@ class LibraryScreen(Screen):
         now = time.time()
         for key in set(paths) - set(ok) - set(fresh):
             self._failed[key] = now
+        self._importing.difference_update(paths)
         if ok:
             self._refresh_cards()
             self._update_tabs()
@@ -772,6 +776,7 @@ class LibraryScreen(Screen):
         self.app.call_from_thread(self._scan_finished, results)
 
     def _scan_finished(self, results) -> None:
+        self._scanning = False
         if results:
             self._refresh_cards()
             self._update_tabs()

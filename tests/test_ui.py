@@ -1541,3 +1541,49 @@ class TestUi:
                 )
 
         asyncio.run(scenario())
+
+
+
+    def test_watch_no_dup(self, tmp_path: Path):
+        _home(tmp_path)
+        LibraryScreen.WATCH_INTERVAL = 0.5
+        (tmp_path / "Books").mkdir()
+        book = tmp_path / "Books" / "one.fb2"
+        write_fixture(book, build_fb2(title="Одна"))
+
+        async def scenario():
+            app = ReaderApp(tmp_path / "lib.db", splash=False)
+            async with app.run_test(size=(100, 40)) as pilot:
+                lib = app.screen
+                lib._importing.add(str(book))
+                calls: list[list[str]] = []
+                lib._watch_import = lambda paths: calls.append(paths)
+                await pilot.pause(0.7)
+                assert calls == []
+                lib._importing.clear()
+                await pilot.pause(0.7)
+                assert len(calls) == 1
+
+        asyncio.run(scenario())
+
+    def test_import_directory_skip(self, tmp_path: Path):
+        from unittest.mock import patch
+
+        from reader.db import LibraryDB
+        from reader.library import import_directory, parse
+
+        _home(tmp_path)
+        (tmp_path / "Books").mkdir()
+        b1 = tmp_path / "Books" / "one.fb2"
+        write_fixture(b1, build_fb2(title="Одна"))
+
+        def _db() -> LibraryDB:
+            return LibraryDB(tmp_path / "lib.db")
+
+        with patch("reader.library.parse", side_effect=parse) as mock:
+            import_directory(_db(), tmp_path / "Books")
+            assert mock.call_count == 1
+            import_directory(_db(), tmp_path / "Books")
+            assert mock.call_count == 1
+            import_directory(_db(), tmp_path / "Books", force=True)
+            assert mock.call_count == 2

@@ -35,6 +35,10 @@ def import_directory(db: LibraryDB, directory: Path, force: bool = False) -> lis
             continue
         if sniff(path) == Format.UNKNOWN:
             continue
+        if not force:
+            existing = db.find_by_path(path)
+            if existing is not None and existing["hash"] == file_hash(path):
+                continue
         try:
             import_book(db, path, force=force)
             results.append((str(path), True))

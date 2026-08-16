@@ -425,10 +425,7 @@ class ReaderApp(App):
     def on_mount(self) -> None:
         books_dir = Path.home() / "Books"
         books_dir.mkdir(parents=True, exist_ok=True)
-        if self.open_path is not None and self.open_path.is_dir():
-            self.push_screen(LibraryScreen(self.db, import_dir=str(self.open_path)))
-        else:
-            self.push_screen(LibraryScreen(self.db))
+        self.push_screen(LibraryScreen(self.db))
         if self.open_path is not None and self.open_path.is_file():
             try:
                 from ..library import import_book
