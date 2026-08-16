@@ -58,6 +58,7 @@ class ReaderScreen(Screen):
         self._highlight_until = 0.0
         self._sel_start: tuple[int, int, int] | None = None
         self._sel_end: tuple[int, int, int] | None = None
+        self._sel_end_y: int | None = None
         self._sel_text = ""
         self._mouse_sel = False
 
@@ -276,6 +277,7 @@ class ReaderScreen(Screen):
             return
         self._sel_start = pos
         self._sel_end = pos
+        self._sel_end_y = int(event.screen_y - region.y)
         self._sel_text = ""
         self._mouse_sel = True
 
@@ -288,6 +290,7 @@ class ReaderScreen(Screen):
         pos = self._mouse_pos(x - region.x, y - region.y)
         if pos is not None and pos != self._sel_end:
             self._sel_end = pos
+            self._sel_end_y = int(y - region.y)
             self._draw()
 
     def on_mouse_up(self, event: events.MouseUp) -> None:
@@ -296,6 +299,13 @@ class ReaderScreen(Screen):
         self._mouse_sel = False
         if self._sel_start is None or self._sel_end is None:
             return
+        region = self.query_one("#content", Static).region
+        if region.contains(event.screen_x, event.screen_y) and self._sel_end_y is not None:
+            y = int(event.screen_y - region.y)
+            if abs(y - self._sel_end_y) <= 2:
+                pos = self._mouse_pos(event.screen_x - region.x, event.screen_y - region.y)
+                if pos is not None:
+                    self._sel_end = pos
         start, end = sorted((self._sel_start, self._sel_end))
         if end <= start:
             self._sel_start = None
