@@ -1434,22 +1434,110 @@ class TestUi:
         asyncio.run(scenario())
 
 
-    def test_watch_books_dir(self, tmp_path: Path):
+    def test_watch_new_md(self, tmp_path: Path):
         _home(tmp_path)
         LibraryScreen.WATCH_INTERVAL = 0.5
-        book = tmp_path / "Books" / "new.fb2"
+        book = tmp_path / "Books" / "Свежая заметка.md"
 
         async def scenario():
             app = ReaderApp(tmp_path / "lib.db", splash=False)
             async with app.run_test(size=(100, 40)) as pilot:
                 lib = app.screen
-                write_fixture(book, build_fb2(title="Свежая книга"))
+                book.write_bytes("# Свежая заметка\n\nТекст книги".encode())
                 old = time.time() - 10
                 os.utime(book, (old, old))
                 for _ in range(12):
                     await pilot.pause(0.5)
                 assert any(
-                    "Свежая книга" in row["title"] for row in lib._rows.values()
+                    "Свежая заметка" in row["title"] for row in lib._rows.values()
+                )
+
+        asyncio.run(scenario())
+
+    def test_watch_delete(self, tmp_path: Path):
+        _home(tmp_path)
+        LibraryScreen.WATCH_INTERVAL = 0.5
+        books = tmp_path / "Books"
+        books.mkdir()
+        b1 = books / "one.fb2"
+        b2 = books / "two.fb2"
+        write_fixture(b1, build_fb2(title="Первая"))
+        write_fixture(b2, build_fb2(title="Вторая"))
+
+        async def scenario():
+            from reader.library import import_book
+
+            app = ReaderApp(tmp_path / "lib.db", splash=False)
+            async with app.run_test(size=(100, 40)) as pilot:
+                lib = app.screen
+                import_book(app.db, b1)
+                import_book(app.db, b2)
+                lib._refresh_cards()
+                assert len(lib._rows) == 2
+                b1.unlink()
+                for _ in range(12):
+                    await pilot.pause(0.5)
+                lib._refresh_cards()
+                assert len(lib._rows) == 1
+                assert any(
+                    row["title"] == "Вторая" for row in lib._rows.values()
+                )
+
+        asyncio.run(scenario())
+
+    def test_watch_delete_outside(self, tmp_path: Path):
+        _home(tmp_path)
+        LibraryScreen.WATCH_INTERVAL = 0.5
+        other = tmp_path / "other"
+        other.mkdir()
+        b1 = other / "one.fb2"
+        write_fixture(b1, build_fb2(title="Чужая"))
+
+        async def scenario():
+            from reader.library import import_book
+
+            app = ReaderApp(tmp_path / "lib.db", splash=False)
+            async with app.run_test(size=(100, 40)) as pilot:
+                lib = app.screen
+                import_book(app.db, b1)
+                lib._refresh_cards()
+                assert len(lib._rows) == 1
+                b1.unlink()
+                for _ in range(12):
+                    await pilot.pause(0.5)
+                lib._refresh_cards()
+                assert len(lib._rows) == 1
+
+        asyncio.run(scenario())
+
+    def test_watch_reedd(self, tmp_path: Path):
+        _home(tmp_path)
+        LibraryScreen.WATCH_INTERVAL = 0.5
+        books = tmp_path / "Books"
+        books.mkdir()
+        b1 = books / "one.fb2"
+        write_fixture(b1, build_fb2(title="Первая"))
+
+        async def scenario():
+            from reader.library import import_book
+
+            app = ReaderApp(tmp_path / "lib.db", splash=False)
+            async with app.run_test(size=(100, 40)) as pilot:
+                lib = app.screen
+                import_book(app.db, b1)
+                b1.unlink()
+                for _ in range(12):
+                    await pilot.pause(0.5)
+                lib._refresh_cards()
+                assert len(lib._rows) == 0
+                write_fixture(b1, build_fb2(title="Первая"))
+                old = time.time() - 10
+                os.utime(b1, (old, old))
+                for _ in range(12):
+                    await pilot.pause(0.5)
+                lib._refresh_cards()
+                assert any(
+                    row["title"] == "Первая" for row in lib._rows.values()
                 )
 
         asyncio.run(scenario())

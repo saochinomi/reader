@@ -102,7 +102,11 @@ class LibraryScreen(Screen):
         yield StatusBar(id="statusbar")
 
     def on_mount(self) -> None:
-        self._known_files = {r["path"] for r in self.db.all_books()}
+        self._books_prefix = str(Path.home() / "Books") + "/"
+        self._known_files = {
+            r["path"] for r in self.db.all_books()
+            if r["path"].startswith(self._books_prefix)
+        }
         self._refresh_shelves()
         self._refresh_cards()
         self._update_tabs()
@@ -672,23 +676,52 @@ class LibraryScreen(Screen):
 
 
     def _watch_books_dir(self) -> None:
-        """Подхватывает книги, появившиеся в ~/Books."""
+        """Подхватывает новые книги в ~/Books и убирает книги пропавших файлов."""
+        from ..importers.detect import sniff
+        from ..models import Format
+
         books = Path.home() / "Books"
         if not books.is_dir():
             return
         now = time.time()
+        found: set[str] = set()
         pending = []
-        for path in books.rglob("*"):
-            if not path.is_file():
+        try:
+            for path in books.rglob("*"):
+                if not path.is_file():
+                    continue
+                if sniff(path) == Format.UNKNOWN:
+                    continue
+                key = str(path)
+                found.add(key)
+                if key in self._known_files:
+                    continue
+                if self._failed.get(key, 0) > now - 30:
+                    continue
+                pending.append(key)
+        except OSError as e:  # noqa: BLE001
+            self.app.notify(f"Не удалось прочитать ~/Books: {e}", severity="error")
+            return
+        deleted = 0
+        known = {
+            r["path"] for r in self.db.all_books()
+            if r["path"].startswith(self._books_prefix)
+        }
+        for key in known - found:
+            if Path(key).exists():
                 continue
-            if path.suffix.lower() not in (".txt", ".epub", ".fb2", ".zip", ".fb2.zip"):
+            row = self.db.find_by_path(Path(key))
+            self._known_files.discard(key)
+            if row is None:
                 continue
-            key = str(path)
-            if key in self._known_files:
-                continue
-            if self._failed.get(key, 0) > now - 30:
-                continue
-            pending.append(key)
+            self.app._books_cache.pop(row["id"], None)
+            self.db.remove_book(row["id"])
+            deleted += 1
+        if deleted:
+            self._refresh_cards()
+            self._refresh_shelves()
+            self._update_tabs()
+            self.app.notify(f"Удалено книг: {deleted}", severity="warning")
         if pending:
             self._watch_import(pending)
 

@@ -5,7 +5,8 @@ from pathlib import Path
 
 from .db import LibraryDB
 from .importers import parse
-from .models import ParsedBook, file_hash
+from .importers.detect import sniff
+from .models import Format, ParsedBook, file_hash
 
 
 def add_parsed_book(db: LibraryDB, path: Path, book: ParsedBook, force: bool = False) -> int:
@@ -32,7 +33,7 @@ def import_directory(db: LibraryDB, directory: Path, force: bool = False) -> lis
     for path in sorted(directory.rglob("*")):
         if not path.is_file():
             continue
-        if path.suffix.lower() not in (".txt", ".epub", ".fb2", ".zip", ".fb2.zip"):
+        if sniff(path) == Format.UNKNOWN:
             continue
         try:
             import_book(db, path, force=force)
