@@ -399,10 +399,6 @@ class TestUi:
                 await pilot.hover("#content", offset=(25, 2))
                 await pilot.mouse_up("#content", offset=(25, 2))
                 await pilot.pause()
-                assert "on #3a3a3a" in content.content  # type: ignore
-
-                await pilot.press("m")
-                await pilot.pause()
                 assert app.screen.__class__.__name__ == "HighlightColorScreen"
                 await pilot.press("enter")
                 await pilot.pause()
@@ -433,7 +429,7 @@ class TestUi:
                 await pilot.mouse_down("#content", offset=(1, 0))
                 await pilot.mouse_up("#content", offset=(30, 1))
                 await pilot.pause()
-                assert reader._sel_start is not None
+                assert app.screen.__class__.__name__ == "HighlightColorScreen"
                 await pilot.press("escape")
                 await pilot.pause()
                 assert isinstance(app.screen, ReaderScreen)
@@ -462,8 +458,6 @@ class TestUi:
                 await pilot.mouse_down("#content", offset=(1, 0))
                 await pilot.mouse_up("#content", offset=(25, 1))
                 await pilot.pause()
-                await pilot.press("m")
-                await pilot.pause()
                 for _ in range(5):
                     await pilot.press("down")
                 await pilot.press("enter")
@@ -475,7 +469,7 @@ class TestUi:
 
         asyncio.run(scenario())
 
-    def test_mark_without_selection(self, tmp_path: Path):
+    def test_click_without_drag_no_window(self, tmp_path: Path):
         _home(tmp_path)
         book = tmp_path / "book.fb2"
         write_fixture(book, build_fb2())
@@ -488,9 +482,11 @@ class TestUi:
                 book_id = import_book(app.db, book)
                 app.push_screen(ReaderScreen(app.db, book_id))
                 await pilot.pause()
-                await pilot.press("m")
+                await pilot.mouse_down("#content", offset=(1, 0))
+                await pilot.mouse_up("#content", offset=(1, 0))
                 await pilot.pause()
                 assert isinstance(app.screen, ReaderScreen)
+                assert app.db.highlights(book_id) == []
 
         asyncio.run(scenario())
 

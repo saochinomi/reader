@@ -37,7 +37,6 @@ class ReaderScreen(Screen):
         Binding("[", "prev_bookmark", "Пред. закл."),
         Binding("]", "next_bookmark", "След. закл."),
         Binding("s", "add_bookmark", "Закладка"),
-        Binding("m", "mark", "Выделить"),
         Binding("H", "show_notes", "Заметки"),
         Binding("b", "show_bookmarks", "Закладки"),
         Binding("f", "cycle_width", "Ширина"),
@@ -233,22 +232,6 @@ class ReaderScreen(Screen):
         self.db.add_bookmark(self.book_id, page.chapter_index, page.paragraph_index, note)
         self.app.notify("Закладка добавлена", severity="information")
 
-    def action_mark(self) -> None:
-        if self._sel_start is None or self._sel_end is None:
-            self.app.notify(
-                "Выделите текст мышью: зажать, протянуть, отпустить",
-                severity="warning",
-            )
-            return
-        start, end = sorted((self._sel_start, self._sel_end))
-        if end <= start:
-            return
-        text = self._sel_text or self._collect_text(start, end)
-        self.app.push_screen(
-            HighlightColorScreen(),
-            lambda result: self._on_sel_action(result, start, end, text),
-        )
-
     def _on_sel_action(
         self,
         result: str | None,
@@ -319,8 +302,12 @@ class ReaderScreen(Screen):
             self._draw()
             return
         self._sel_text = self._collect_text(start, end)
-        self.app.notify("Выделено: m - что сделать с текстом", severity="information")
         self._draw()
+        text = self._sel_text
+        self.app.push_screen(
+            HighlightColorScreen(),
+            lambda result: self._on_sel_action(result, start, end, text),
+        )
 
     def _collect_text(self, start: tuple[int, int, int], end: tuple[int, int, int]) -> str:
         assert self.book is not None
@@ -339,7 +326,7 @@ class ReaderScreen(Screen):
         assert self.renderer is not None
         highlights = self.db.highlights(self.book_id)
         if not highlights:
-            self.app.notify("Заметок нет (m - выделить текст)", severity="information")
+            self.app.notify("Заметок нет (выделите текст мышью)", severity="information")
             return
         self.app.push_screen(
             NotesScreen(self.book_id), self._on_note_selected
