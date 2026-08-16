@@ -91,10 +91,20 @@ class ReaderScreen(Screen):
         if resumed:
             self._highlight_until = time.monotonic() + 1.5
             self.set_timer(1.5, self._clear_highlight)
+        page = self.renderer.render(self.page_index)
+        self._mlog(
+            f"start size={self.size} rw={self.renderer.width} rh={self.renderer.height} "
+            f"reg={self.query_one('#content', Static).region} "
+            f"meta={len(page.meta)} lines={len(page.lines)}"
+        )
 
     def _clear_highlight(self) -> None:
         self._highlight_until = 0.0
         self._draw()
+
+    def _mlog(self, line: str) -> None:
+        with open("/tmp/reader_mouse.log", "a", encoding="utf-8") as f:
+            f.write(f"{time.strftime('%H:%M:%S')} {line}\n")
 
     def _highlighted(self) -> bool:
         return time.monotonic() < self._highlight_until
@@ -273,6 +283,7 @@ class ReaderScreen(Screen):
         if not region.contains(event.screen_x, event.screen_y):
             return
         pos = self._mouse_pos(event.screen_x - region.x, event.screen_y - region.y)
+        self._mlog(f"down b={event.button} sx={event.screen_x} sy={event.screen_y} reg={region} lx={event.screen_x - region.x} ly={event.screen_y - region.y} row={pos} start={pos}")
         if pos is None:
             return
         self._sel_start = pos
@@ -288,6 +299,7 @@ class ReaderScreen(Screen):
         x = min(max(event.screen_x, region.x), region.right - 1)
         y = min(max(event.screen_y, region.y), region.bottom - 1)
         pos = self._mouse_pos(x - region.x, y - region.y)
+        self._mlog(f"move b={event.button} sx={event.screen_x} sy={event.screen_y} reg={region} lx={event.screen_x - region.x} ly={event.screen_y - region.y} row={pos} end={self._sel_end}")
         if pos is not None and pos != self._sel_end:
             self._sel_end = pos
             self._sel_end_y = int(y - region.y)
@@ -300,6 +312,8 @@ class ReaderScreen(Screen):
         if self._sel_start is None or self._sel_end is None:
             return
         region = self.query_one("#content", Static).region
+        up_pos = self._mouse_pos(event.screen_x - region.x, event.screen_y - region.y)
+        self._mlog(f"up b={event.button} sx={event.screen_x} sy={event.screen_y} reg={region} lx={event.screen_x - region.x} ly={event.screen_y - region.y} row={up_pos} end_y={self._sel_end_y} end={self._sel_end}")
         if region.contains(event.screen_x, event.screen_y) and self._sel_end_y is not None:
             y = int(event.screen_y - region.y)
             if abs(y - self._sel_end_y) <= 2:
