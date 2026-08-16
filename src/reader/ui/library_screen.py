@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import time
 from pathlib import Path
 
 from textual import on, work
@@ -58,6 +59,7 @@ class LibraryScreen(Screen):
     SORT_KEYS = [("title", "названию"), ("author", "автору"), ("year", "году")]
     CARD_W = 22
     SIDEBAR_W = 20
+    WATCH_INTERVAL = 3.0
 
     def __init__(self, db: LibraryDB, import_dir: str | None = None):
         super().__init__()
@@ -78,6 +80,8 @@ class LibraryScreen(Screen):
         self._dropdown_open = False
         self._open_shelf_id: int | None = None
         self._open_books: list[dict] = []
+        self._known_files: set[str] = set()
+        self._failed: dict[str, float] = {}
 
     def compose(self) -> ComposeResult:
         with Horizontal(id="main_row"):
@@ -98,10 +102,13 @@ class LibraryScreen(Screen):
         yield StatusBar(id="statusbar")
 
     def on_mount(self) -> None:
+        self._known_files = {r["path"] for r in self.db.all_books()}
         self._refresh_shelves()
         self._refresh_cards()
         self._update_tabs()
         self.set_interval(1.0, self._timer_tick)
+        self.set_interval(self.WATCH_INTERVAL, self._watch_books_dir)
+        self._watch_books_dir()
         if self.import_dir_on_start:
             self._import_dir(self.import_dir_on_start)
         else:
@@ -663,6 +670,59 @@ class LibraryScreen(Screen):
             self._focus = "shelves"
             await self.action_open_shelf()
 
+
+    def _watch_books_dir(self) -> None:
+        """Подхватывает книги, появившиеся в ~/Books."""
+        books = Path.home() / "Books"
+        if not books.is_dir():
+            return
+        now = time.time()
+        pending = []
+        for path in books.rglob("*"):
+            if not path.is_file():
+                continue
+            if path.suffix.lower() not in (".txt", ".epub", ".fb2", ".zip", ".fb2.zip"):
+                continue
+            key = str(path)
+            if key in self._known_files:
+                continue
+            if self._failed.get(key, 0) > now - 30:
+                continue
+            pending.append(key)
+        if pending:
+            self._watch_import(pending)
+
+    @work(thread=True)
+    def _watch_import(self, paths: list[str]) -> None:
+        from ..library import import_book
+
+        db = LibraryDB(self.app.db_path)
+        ok: list[str] = []
+        fresh: list[str] = []
+        try:
+            for key in paths:
+                path = Path(key)
+                try:
+                    if time.time() - path.stat().st_mtime < 1:
+                        fresh.append(key)
+                        continue
+                    import_book(db, path)
+                    ok.append(key)
+                except Exception:
+                    pass
+        finally:
+            db.close()
+        self.app.call_from_thread(self._watch_import_finished, ok, fresh, paths)
+
+    def _watch_import_finished(self, ok: list[str], fresh: list[str], paths: list[str]) -> None:
+        self._known_files.update(ok)
+        now = time.time()
+        for key in set(paths) - set(ok) - set(fresh):
+            self._failed[key] = now
+        if ok:
+            self._refresh_cards()
+            self._update_tabs()
+            self.app.notify(f"Добавлено книг: {len(ok)}", severity="information")
 
     @work(thread=True)
     def _scan_books_dir(self) -> None:

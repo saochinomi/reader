@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import asyncio
+import os
+import time
 from pathlib import Path
 
 import pytest
@@ -1416,8 +1418,6 @@ class TestUi:
             async with app.run_test(size=(100, 40)) as pilot:
                 from reader.library import import_book
 
-                from reader.library import import_book
-
                 import_book(app.db, b1)
                 import_book(app.db, b2)
                 import_book(app.db, b3)
@@ -1430,5 +1430,26 @@ class TestUi:
                 lib.query_one("#search").value = ""
                 await pilot.pause()
                 assert len(lib._rows) == 3
+
+        asyncio.run(scenario())
+
+
+    def test_watch_books_dir(self, tmp_path: Path):
+        _home(tmp_path)
+        LibraryScreen.WATCH_INTERVAL = 0.5
+        book = tmp_path / "Books" / "new.fb2"
+
+        async def scenario():
+            app = ReaderApp(tmp_path / "lib.db", splash=False)
+            async with app.run_test(size=(100, 40)) as pilot:
+                lib = app.screen
+                write_fixture(book, build_fb2(title="Свежая книга"))
+                old = time.time() - 10
+                os.utime(book, (old, old))
+                for _ in range(12):
+                    await pilot.pause(0.5)
+                assert any(
+                    "Свежая книга" in row["title"] for row in lib._rows.values()
+                )
 
         asyncio.run(scenario())
